@@ -1,64 +1,37 @@
-# ============================================================
-# CELL 2 — MAIN PROCESSING CODE
-# ============================================================
-
-import pandas as pd
+%%writefile processor.py
 import os
-import shutil
 import re
-from google.colab import files
+import shutil
+import pandas as pd
+
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, Alignment, Border, PatternFill
-from tqdm.auto import tqdm
+
 
 # ============================================================
-# CHECK CONFIG
-# ============================================================
-
-if "CONFIG_READY" not in globals() or CONFIG_READY is not True:
-    raise RuntimeError("Run CELL 1 first, choose settings, then click 🍇 SAVE CONFIG.")
-
-if "PRINT_SAVED_LINES" not in globals():
-    PRINT_SAVED_LINES = False
-
-if "PRINT_FULL_SUMMARY_ON_SCREEN" not in globals():
-    PRINT_FULL_SUMMARY_ON_SCREEN = False
-
-# ============================================================
-# FIXED FINAL KAUM BUCKETS
-# ============================================================
-# Final buckets only:
-# MELAYU / CINA / INDIA / LAIN-LAIN
-#
-# ORANG ASLI = LAIN-LAIN
-# BUMI = LAIN-LAIN
-# anything else = LAIN-LAIN
+# CONSTANTS
 # ============================================================
 
 ORIGINAL_KAUM_BUCKETS = ["MELAYU", "CINA", "INDIA", "LAIN-LAIN"]
 
-# ============================================================
-# CLEAN OUTPUT FOLDER
-# ============================================================
+KAUM_ORDER = ["MELAYU", "CINA", "INDIA", "LAIN-LAIN"]
 
-if os.path.exists(OUTPUT_ROOT):
-    shutil.rmtree(OUTPUT_ROOT)
+CODE_ORDER = [
+    "ML", "MP",
+    "CL", "CP",
+    "IL", "IP",
+    "LLL", "LLP",
+]
 
-os.makedirs(OUTPUT_ROOT, exist_ok=True)
+PHONE_PRIORITY_COLUMNS = ["number", "number2"]
 
-# ============================================================
-# UPLOAD FILES
-# ============================================================
-
-uploaded = files.upload()
-
-if not uploaded:
-    raise ValueError("No files uploaded.")
-
-# ============================================================
-# COLUMN ALIASES
-# ============================================================
+AGE_RANGES = [
+    ("18-25", "18-25", 18, 25),
+    ("26-40", "26-40", 26, 40),
+    ("41-60", "41-60", 41, 60),
+    ("61>", "61 KE ATAS", 61, None),
+]
 
 COLUMN_ALIASES = {
     "name": [
@@ -145,9 +118,15 @@ COLUMN_ALIASES = {
     ],
 }
 
+
 # ============================================================
-# BASIC FUNCTIONS
+# BASIC HELPERS
 # ============================================================
+
+def emit(progress_callback, message):
+    if progress_callback:
+        progress_callback(message)
+
 
 def normalize_key(text):
     text = str(text)
@@ -173,6 +152,10 @@ def sanitize(text):
     return re.sub(r'[\\/*?:"<>|]', "_", text)
 
 
+def format_count(n):
+    return f"{int(n):,}"
+
+
 def make_unique_columns(cols):
     seen = {}
     final_cols = []
@@ -182,6 +165,7 @@ def make_unique_columns(cols):
 
         if norm in ALIAS_LOOKUP:
             new_col = ALIAS_LOOKUP[norm]
+
         else:
             new_col = str(col).strip()
             new_col = new_col.replace("\xa0", " ")
@@ -193,6 +177,7 @@ def make_unique_columns(cols):
         if new_col not in seen:
             seen[new_col] = 0
             final_cols.append(new_col)
+
         else:
             seen[new_col] += 1
             final_cols.append(f"{new_col}__{seen[new_col]}")
@@ -219,14 +204,13 @@ def detect_header_row(raw_df):
     return None
 
 
-def read_excel_smart(file_name):
+def read_excel_smart(file_name, read_all_sheets=True, progress_callback=None):
     all_sheets = []
 
     xls = pd.ExcelFile(file_name)
-    sheet_names = xls.sheet_names if READ_ALL_SHEETS else [xls.sheet_names[0]]
+    sheet_names = xls.sheet_names if read_all_sheets else [xls.sheet_names[0]]
 
-    print(f"\nReading workbook: {file_name}")
-    print(f"Sheets used: {sheet_names}")
+    emit(progress_callback, f"Reading: {os.path.basename(file_name)}")
 
     for sheet_name in sheet_names:
         raw = pd.read_excel(
@@ -239,7 +223,6 @@ def read_excel_smart(file_name):
         header_row = detect_header_row(raw)
 
         if header_row is None:
-            print(f"  Skipped sheet: {sheet_name} — header not detected")
             continue
 
         cols = raw.iloc[header_row].tolist()
@@ -257,21 +240,22 @@ def read_excel_smart(file_name):
         ].copy()
 
         if data.empty:
-            print(f"  Skipped sheet: {sheet_name} — no rows")
             continue
 
-        data["source_file"] = file_name
+        data["source_file"] = os.path.basename(file_name)
         data["source_sheet"] = sheet_name
 
         all_sheets.append(data)
 
-        print(f"  Loaded sheet: {sheet_name} — {len(data):,} rows")
-
     if not all_sheets:
-        raise ValueError(f"No usable sheet found in {file_name}")
+        raise ValueError(f"No usable sheet found in {os.path.basename(file_name)}")
 
     return pd.concat(all_sheets, ignore_index=True)
 
+
+# ============================================================
+# CLEANING HELPERS
+# ============================================================
 
 def clean_phone(value):
     phone = re.sub(r"\D", "", str(value).strip())
@@ -369,6 +353,10 @@ def normalize_sikap(value):
     return s
 
 
+# ============================================================
+# WA FORMAT HELPERS
+# ============================================================
+
 def get_code(kategori_kaum, gender):
     k = clean_kaum(kategori_kaum)
     g = str(gender).strip().upper()
@@ -419,9 +407,24 @@ def format_first_name(row):
     return format_code_7digit(row.get("kod_dm", ""))
 
 
+def build_wa_df(group):
+    return pd.DataFrame({
+        "Title": group["number"].astype(str),
+        "First Name": group["First Name"].astype(str),
+        "Middle Name": "",
+        "Last Name": group["Last Name"].astype(str),
+        "Mobile Phone": group["number"].astype(str),
+    })
+
+
+# ============================================================
+# LABEL HELPERS
+# ============================================================
+
 def assign_age_range(age):
     try:
         age = int(float(str(age).strip()))
+
     except:
         return None
 
@@ -429,6 +432,7 @@ def assign_age_range(age):
         if max_age is None:
             if age >= min_age:
                 return txt_label
+
         else:
             if min_age <= age <= max_age:
                 return txt_label
@@ -485,89 +489,21 @@ def code_sort_num(text):
     return int(num) if num else 0
 
 
-def format_count(n):
-    return f"{int(n):,}"
+def get_file_label_from_age(txt_label):
+    for t, file_label, min_age, max_age in AGE_RANGES:
+        if t == txt_label:
+            return file_label
+
+    return txt_label
 
 
-def save_xlsx_no_style(df, path):
-    wb = Workbook()
-    ws = wb.active
+def safe_file_label(label):
+    label = str(label)
 
-    for row in dataframe_to_rows(df, index=False, header=True):
-        ws.append(row)
+    if label in [x[0] for x in AGE_RANGES]:
+        label = get_file_label_from_age(label)
 
-    for row in ws.iter_rows():
-        for cell in row:
-            cell.font = Font(bold=False)
-            cell.border = Border()
-            cell.fill = PatternFill(fill_type=None)
-            cell.alignment = Alignment(horizontal="left", vertical="top")
-
-    wb.save(path)
-
-
-def build_wa_df(group):
-    return pd.DataFrame({
-        "Title": group["number"].astype(str),
-        "First Name": group["First Name"].astype(str),
-        "Middle Name": "",
-        "Last Name": group["Last Name"].astype(str),
-        "Mobile Phone": group["number"].astype(str),
-    })
-
-
-def get_required_columns():
-    req = set()
-
-    req.add("number")
-    req.add("kod_dm")
-    req.add("kategori_kaum")
-    req.add("jantina")
-
-    for level in GROUP_LEVELS:
-        if level == "PARLIMEN":
-            req.update(["kod_parlimen", "nama_parlimen"])
-
-        elif level == "DUN":
-            req.update(["kod_dun", "nama_dun"])
-
-        elif level == "DM":
-            req.update(["kod_dm", "nama_dm"])
-
-        elif level == "KAUM":
-            req.add("kategori_kaum")
-
-        elif level == "AGE":
-            req.add("umur")
-
-    if SIKAP_FILTER:
-        req.add("sikap")
-
-    if PARTY_FILTER:
-        req.add("party")
-
-    if AGE_FILTER is not None:
-        req.add("umur")
-
-    return sorted(req)
-
-
-def validate_required_columns(df):
-    req = get_required_columns()
-    missing = []
-
-    for col in req:
-        if col == "number":
-            if "number" not in df.columns and "number2" not in df.columns:
-                missing.append("number / NO TEL 1")
-        else:
-            if col not in df.columns:
-                missing.append(col)
-
-    if missing:
-        print("\nAvailable columns after cleanup:")
-        print(list(df.columns))
-        raise ValueError(f"Missing columns after header cleanup: {missing}")
+    return sanitize(label)
 
 
 def build_labels(df):
@@ -617,11 +553,11 @@ def build_labels(df):
     return df
 
 
-def get_group_columns():
+def get_group_columns(group_levels):
     label_cols = []
     sort_cols = []
 
-    for level in GROUP_LEVELS:
+    for level in group_levels:
         if level == "PARLIMEN":
             label_cols.append("__PARLIMEN_LABEL")
             sort_cols.append("__PARLIMEN_SORT")
@@ -645,422 +581,516 @@ def get_group_columns():
     return label_cols, sort_cols
 
 
-def get_file_label_from_age(txt_label):
-    for t, file_label, min_age, max_age in AGE_RANGES:
-        if t == txt_label:
-            return file_label
-
-    return txt_label
-
-
-def safe_file_label(label):
-    label = str(label)
-
-    if label in [x[0] for x in AGE_RANGES]:
-        label = get_file_label_from_age(label)
-
-    return sanitize(label)
-
 # ============================================================
-# READ ALL FILES
+# VALIDATION
 # ============================================================
 
-all_data = []
+def get_required_columns(config):
+    req = set()
 
-for file_name in tqdm(uploaded.keys(), desc="Reading files"):
-    df_file = read_excel_smart(file_name)
-    all_data.append(df_file)
+    group_levels = config["group_levels"]
+    sikap_filter = config["sikap_filter"]
+    party_filter = config["party_filter"]
+    age_filter = config["age_filter"]
 
-if not all_data:
-    raise ValueError("No uploaded data found.")
+    req.add("number")
+    req.add("kod_dm")
+    req.add("kategori_kaum")
+    req.add("jantina")
 
-df = pd.concat(all_data, ignore_index=True)
+    for level in group_levels:
+        if level == "PARLIMEN":
+            req.update(["kod_parlimen", "nama_parlimen"])
 
-original_rows = len(df)
+        elif level == "DUN":
+            req.update(["kod_dun", "nama_dun"])
 
-if "number2" not in df.columns:
-    df["number2"] = ""
+        elif level == "DM":
+            req.update(["kod_dm", "nama_dm"])
 
-validate_required_columns(df)
+        elif level == "KAUM":
+            req.add("kategori_kaum")
 
-print(f"\nOriginal rows             : {format_count(original_rows)}")
+        elif level == "AGE":
+            req.add("umur")
+
+    if sikap_filter:
+        req.add("sikap")
+
+    if party_filter:
+        req.add("party")
+
+    if age_filter is not None:
+        req.add("umur")
+
+    return sorted(req)
+
+
+def validate_required_columns(df, config):
+    req = get_required_columns(config)
+    missing = []
+
+    for col in req:
+        if col == "number":
+            if "number" not in df.columns and "number2" not in df.columns:
+                missing.append("number / NO TEL 1")
+        else:
+            if col not in df.columns:
+                missing.append(col)
+
+    if missing:
+        raise ValueError(
+            "Missing columns after header cleanup: "
+            + str(missing)
+            + "\n\nAvailable columns:\n"
+            + str(list(df.columns))
+        )
+
 
 # ============================================================
-# PHONE CLEANING
+# FILE WRITER
 # ============================================================
 
-df["number"] = df.apply(choose_one_phone, axis=1)
+def save_xlsx_no_style(df, path):
+    wb = Workbook()
+    ws = wb.active
 
-before_phone = len(df)
-df = df[df["number"].notna()].copy()
-after_phone = len(df)
+    for row in dataframe_to_rows(df, index=False, header=True):
+        ws.append(row)
 
-print(f"After valid number filter : {format_count(after_phone)} kept ({format_count(before_phone - after_phone)} removed)")
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.font = Font(bold=False)
+            cell.border = Border()
+            cell.fill = PatternFill(fill_type=None)
+            cell.alignment = Alignment(horizontal="left", vertical="top")
 
-if DEDUP_BY_NOKP and "nokp" in df.columns:
-    df["nokp_clean"] = df["nokp"].astype(str).str.replace(r"\D", "", regex=True).str.strip()
+    wb.save(path)
 
-    before_nokp = len(df)
 
-    df_valid_nokp = df[df["nokp_clean"] != ""].drop_duplicates(
-        subset=["nokp_clean"],
-        keep="first"
+def get_split_items(group, split_col):
+    items = []
+
+    if split_col == "kaum_clean":
+        for key in KAUM_ORDER:
+            sub = group[group["kaum_clean"] == key].copy()
+            if not sub.empty:
+                items.append((key, sub))
+
+        return items
+
+    if split_col == "code":
+        for key in CODE_ORDER:
+            sub = group[group["code"] == key].copy()
+            if not sub.empty:
+                items.append((key, sub))
+
+        return items
+
+    for key, sub in group.groupby(split_col, dropna=False, sort=False):
+        items.append((key, sub.copy()))
+
+    return items
+
+
+# ============================================================
+# MAIN EXPORT FUNCTION
+# ============================================================
+
+def run_export(file_paths, config, progress_callback=None):
+    output_dir = config["output_dir"]
+    zip_name = config.get("zip_name", "voter_outputs")
+
+    input_level = config["input_level"]
+    group_levels = config["group_levels"]
+    last_group_as_folder = config["last_group_as_folder"]
+    split_by_kaum = config["split_by_kaum"]
+    split_by_gender_code = config["split_by_gender_code"]
+    keep_kaum = config["keep_kaum"]
+    sikap_filter = config["sikap_filter"]
+    party_filter = config["party_filter"]
+    age_filter = config["age_filter"]
+    dedup_by_phone = config["dedup_by_phone"]
+    dedup_by_nokp = config["dedup_by_nokp"]
+    read_all_sheets = config["read_all_sheets"]
+    create_empty_files = config["create_empty_files"]
+
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ========================================================
+    # READ FILES
+    # ========================================================
+
+    all_data = []
+
+    for file_name in file_paths:
+        df_file = read_excel_smart(
+            file_name=file_name,
+            read_all_sheets=read_all_sheets,
+            progress_callback=progress_callback
+        )
+        all_data.append(df_file)
+
+    if not all_data:
+        raise ValueError("No uploaded data found.")
+
+    df = pd.concat(all_data, ignore_index=True)
+
+    original_rows = len(df)
+
+    if "number2" not in df.columns:
+        df["number2"] = ""
+
+    validate_required_columns(df, config)
+
+    # ========================================================
+    # PHONE CLEANING
+    # ========================================================
+
+    emit(progress_callback, "Cleaning phone numbers...")
+
+    df["number"] = df.apply(choose_one_phone, axis=1)
+
+    before_phone = len(df)
+    df = df[df["number"].notna()].copy()
+    after_phone = len(df)
+
+    if df.empty:
+        raise ValueError("No rows left after number cleaning.")
+
+    # ========================================================
+    # DEDUP NO KP
+    # ========================================================
+
+    if dedup_by_nokp and "nokp" in df.columns:
+        emit(progress_callback, "Removing duplicate NO KP...")
+
+        df["nokp_clean"] = df["nokp"].astype(str).str.replace(r"\D", "", regex=True).str.strip()
+
+        df_valid_nokp = df[df["nokp_clean"] != ""].drop_duplicates(
+            subset=["nokp_clean"],
+            keep="first"
+        )
+
+        df_blank_nokp = df[df["nokp_clean"] == ""]
+
+        df = pd.concat([df_valid_nokp, df_blank_nokp], ignore_index=True)
+
+    # ========================================================
+    # DEDUP PHONE
+    # ========================================================
+
+    if dedup_by_phone:
+        emit(progress_callback, "Removing duplicate phone numbers...")
+        df = df.drop_duplicates(subset=["number"], keep="first").copy()
+
+    if df.empty:
+        raise ValueError("No rows left after duplicate cleaning.")
+
+    # ========================================================
+    # KAUM CLEANING + FILTER
+    # ========================================================
+
+    emit(progress_callback, "Cleaning kaum...")
+
+    df["kaum_clean"] = df["kategori_kaum"].apply(clean_kaum)
+
+    before_kaum = len(df)
+
+    if keep_kaum != ["ALL"]:
+        keep_set = set(normalize_filter_value(x) for x in keep_kaum)
+        df = df[df["kaum_clean"].isin(keep_set)].copy()
+
+    after_kaum = len(df)
+
+    if df.empty:
+        raise ValueError("No rows left after kaum filtering.")
+
+    # ========================================================
+    # SIKAP FILTER
+    # ========================================================
+
+    if "sikap" in df.columns:
+        df["sikap_clean"] = df["sikap"].apply(normalize_sikap)
+    else:
+        df["sikap_clean"] = ""
+
+    if sikap_filter:
+        emit(progress_callback, "Filtering sikap...")
+
+        sikap_set = set(normalize_sikap(x) for x in sikap_filter)
+        df = df[df["sikap_clean"].isin(sikap_set)].copy()
+
+    if df.empty:
+        raise ValueError("No rows left after sikap filtering.")
+
+    # ========================================================
+    # PARTY FILTER
+    # ========================================================
+
+    if party_filter:
+        emit(progress_callback, "Filtering party...")
+
+        party_set = set(str(x).strip().upper() for x in party_filter)
+
+        df["party_clean"] = df["party"].astype(str).str.strip().str.upper()
+        df = df[df["party_clean"].isin(party_set)].copy()
+
+    if df.empty:
+        raise ValueError("No rows left after party filtering.")
+
+    # ========================================================
+    # AGE FILTER
+    # ========================================================
+
+    if age_filter is not None:
+        emit(progress_callback, "Filtering age...")
+
+        min_age, max_age = age_filter
+
+        df["umur_num"] = pd.to_numeric(df["umur"], errors="coerce")
+
+        if max_age is None:
+            df = df[df["umur_num"] >= min_age].copy()
+
+        else:
+            df = df[
+                (df["umur_num"] >= min_age) &
+                (df["umur_num"] <= max_age)
+            ].copy()
+
+    if df.empty:
+        raise ValueError("No rows left after age filtering.")
+
+    # ========================================================
+    # WA FORMAT
+    # ========================================================
+
+    emit(progress_callback, "Preparing WhatsApp columns...")
+
+    df["code"] = df.apply(
+        lambda x: get_code(x.get("kategori_kaum", ""), x.get("jantina", "")),
+        axis=1
     )
 
-    df_blank_nokp = df[df["nokp_clean"] == ""]
+    df["First Name"] = df.apply(format_first_name, axis=1)
+
+    df = df[df["First Name"].astype(str).str.strip() != ""].copy()
 
-    df = pd.concat([df_valid_nokp, df_blank_nokp], ignore_index=True)
+    df["Last Name"] = df["code"]
+
+    if df.empty:
+        raise ValueError("No rows left after WhatsApp formatting.")
 
-    after_nokp = len(df)
+    # ========================================================
+    # BUILD LABELS
+    # ========================================================
 
-    print(f"After NO KP duplicate cut : {format_count(after_nokp)} kept ({format_count(before_nokp - after_nokp)} removed)")
+    df = build_labels(df)
 
-else:
-    print("After NO KP duplicate cut : skipped, no NO KP column found")
+    if "AGE" in group_levels:
+        df = df[df["__AGE_LABEL"].notna()].copy()
 
-if DEDUP_BY_PHONE:
-    before_dup = len(df)
-    df = df.drop_duplicates(subset=["number"], keep="first").copy()
-    after_dup = len(df)
+    if df.empty:
+        raise ValueError("No rows left after grouping setup.")
 
-    print(f"After number duplicate cut: {format_count(after_dup)} kept ({format_count(before_dup - after_dup)} removed)")
+    # ========================================================
+    # SUMMARY SETUP
+    # ========================================================
 
-if df.empty:
-    raise ValueError("No rows left after number cleaning.")
+    summary_lines = [
+        "SUMMARY",
+        "",
+        f"JUMLAH ASAL = {format_count(original_rows)}",
+        f"AFTER VALID NUMBER FILTER = {format_count(after_phone)} kept ({format_count(before_phone - after_phone)} removed)",
+        f"AFTER KAUM FILTER = {format_count(after_kaum)} kept ({format_count(before_kaum - after_kaum)} removed)",
+        f"JUMLAH AKHIR = {format_count(len(df))}",
+        "",
+        "CONFIG",
+        f"INPUT_LEVEL = {input_level}",
+        f"GROUP_LEVELS = {group_levels}",
+        f"LAST_GROUP_AS_FOLDER = {last_group_as_folder}",
+        f"SPLIT_BY_KAUM = {split_by_kaum}",
+        f"SPLIT_BY_GENDER_CODE = {split_by_gender_code}",
+        f"KEEP_KAUM = {keep_kaum}",
+        f"SIKAP_FILTER = {sikap_filter}",
+        f"PARTY_FILTER = {party_filter}",
+        f"AGE_FILTER = {age_filter}",
+        f"DEDUP_BY_PHONE = {dedup_by_phone}",
+        f"DEDUP_BY_NOKP = {dedup_by_nokp}",
+        f"READ_ALL_SHEETS = {read_all_sheets}",
+        "",
+        "KAUM NOTE",
+        "FINAL KAUM BUCKETS = MELAYU, CINA, INDIA, LAIN-LAIN",
+        "ORANG ASLI, BUMI, AND ANY OTHER KAUM = LAIN-LAIN",
+        "",
+        "SIKAP NOTE",
+        "KELABU = any value containing KELABU, including KELABU-BARU and KELABU-LAMA",
+        "",
+        "OUTPUT COUNT",
+        ""
+    ]
 
-# ============================================================
-# KAUM CLEANING + FILTER
-# ============================================================
+    # ========================================================
+    # WRITE OUTPUTS
+    # ========================================================
 
-df["kaum_clean"] = df["kategori_kaum"].apply(clean_kaum)
+    emit(progress_callback, "Writing Excel files...")
 
-print("\nKAUM VALUES FOUND AFTER CLEANING:")
-print(sorted(df["kaum_clean"].astype(str).unique()))
+    label_cols, sort_cols = get_group_columns(group_levels)
 
-before_kaum = len(df)
+    sort_existing = [c for c in sort_cols if c in df.columns]
 
-if KEEP_KAUM != ["ALL"]:
-    keep_set = set(normalize_filter_value(x) for x in KEEP_KAUM)
-    df = df[df["kaum_clean"].isin(keep_set)].copy()
+    if sort_existing:
+        df = df.sort_values(sort_existing).copy()
 
-after_kaum = len(df)
+    split_col = None
 
-print(f"After kaum filter         : {format_count(after_kaum)} kept ({format_count(before_kaum - after_kaum)} removed)")
+    if split_by_gender_code:
+        split_col = "code"
 
-if df.empty:
-    raise ValueError("No rows left after kaum filtering.")
+    elif split_by_kaum:
+        split_col = "kaum_clean"
 
-# ============================================================
-# SIKAP CLEANING + FILTER
-# ============================================================
+    total_files_created = 0
 
-if "sikap" in df.columns:
-    df["sikap_clean"] = df["sikap"].apply(normalize_sikap)
+    # ========================================================
+    # CASE 1 — NO GROUPING
+    # ========================================================
 
-    print("\nSIKAP VALUES FOUND AFTER CLEANING:")
-    print(sorted(df["sikap_clean"].astype(str).unique()))
+    if not label_cols:
+        base_folder = output_dir
+        os.makedirs(base_folder, exist_ok=True)
 
-else:
-    df["sikap_clean"] = ""
+        if split_col:
+            split_items = get_split_items(df, split_col)
 
-if SIKAP_FILTER:
-    before_sikap = len(df)
-    sikap_set = set(normalize_sikap(x) for x in SIKAP_FILTER)
+            for split_value, split_group in split_items:
+                if split_group.empty and not create_empty_files:
+                    continue
 
-    print(f"\nSIKAP FILTER USED: {sorted(sikap_set)}")
+                export_df = build_wa_df(split_group)
 
-    df = df[df["sikap_clean"].isin(sikap_set)].copy()
+                out_file = f"{safe_file_label(split_value)}.xlsx"
+                out_path = os.path.join(base_folder, out_file)
 
-    after_sikap = len(df)
+                save_xlsx_no_style(export_df, out_path)
 
-    print(f"After sikap filter        : {format_count(after_sikap)} kept ({format_count(before_sikap - after_sikap)} removed)")
+                total_files_created += 1
+                summary_lines.append(f"{safe_file_label(split_value)} = {format_count(len(split_group))}")
 
-if df.empty:
-    raise ValueError("No rows left after sikap filtering.")
+        else:
+            export_df = build_wa_df(df)
 
-# ============================================================
-# PARTY FILTER
-# ============================================================
-
-if PARTY_FILTER:
-    before_party = len(df)
-    party_set = set(str(x).strip().upper() for x in PARTY_FILTER)
-
-    df["party_clean"] = df["party"].astype(str).str.strip().str.upper()
-
-    df = df[df["party_clean"].isin(party_set)].copy()
-
-    after_party = len(df)
-
-    print(f"After party filter        : {format_count(after_party)} kept ({format_count(before_party - after_party)} removed)")
-
-if df.empty:
-    raise ValueError("No rows left after party filtering.")
-
-# ============================================================
-# AGE FILTER
-# ============================================================
-
-if AGE_FILTER is not None:
-    min_age, max_age = AGE_FILTER
-
-    before_age = len(df)
-
-    df["umur_num"] = pd.to_numeric(df["umur"], errors="coerce")
-
-    if max_age is None:
-        df = df[df["umur_num"] >= min_age].copy()
-    else:
-        df = df[
-            (df["umur_num"] >= min_age) &
-            (df["umur_num"] <= max_age)
-        ].copy()
-
-    after_age = len(df)
-
-    print(f"After age filter          : {format_count(after_age)} kept ({format_count(before_age - after_age)} removed)")
-
-if df.empty:
-    raise ValueError("No rows left after age filtering.")
-
-# ============================================================
-# WA FORMAT COLUMNS
-# ============================================================
-
-df["code"] = df.apply(
-    lambda x: get_code(x.get("kategori_kaum", ""), x.get("jantina", "")),
-    axis=1
-)
-
-df["First Name"] = df.apply(format_first_name, axis=1)
-
-before_first_name = len(df)
-df = df[df["First Name"].astype(str).str.strip() != ""].copy()
-after_first_name = len(df)
-
-print(f"After First Name filter   : {format_count(after_first_name)} kept ({format_count(before_first_name - after_first_name)} removed)")
-
-df["Last Name"] = df["code"]
-
-if df.empty:
-    raise ValueError("No rows left after WA formatting.")
-
-# ============================================================
-# BUILD GROUP LABELS
-# ============================================================
-
-df = build_labels(df)
-
-if "AGE" in GROUP_LEVELS:
-    before_age_group = len(df)
-
-    df = df[df["__AGE_LABEL"].notna()].copy()
-
-    after_age_group = len(df)
-
-    print(f"After age range grouping  : {format_count(after_age_group)} kept ({format_count(before_age_group - after_age_group)} removed)")
-
-if df.empty:
-    raise ValueError("No rows left after grouping setup.")
-
-# ============================================================
-# WRITE OUTPUT
-# ============================================================
-
-summary_lines = [
-    "SUMMARY",
-    "",
-    f"JUMLAH AKHIR = {format_count(len(df))}",
-    "",
-    "CONFIG",
-    f"INPUT_LEVEL = {INPUT_LEVEL}",
-    f"GROUP_LEVELS = {GROUP_LEVELS}",
-    f"LAST_GROUP_AS_FOLDER = {LAST_GROUP_AS_FOLDER}",
-    f"SPLIT_BY_KAUM = {SPLIT_BY_KAUM}",
-    f"SPLIT_BY_GENDER_CODE = {SPLIT_BY_GENDER_CODE}",
-    f"KEEP_KAUM = {KEEP_KAUM}",
-    f"SIKAP_FILTER = {SIKAP_FILTER}",
-    f"PARTY_FILTER = {PARTY_FILTER}",
-    f"AGE_FILTER = {AGE_FILTER}",
-    f"DEDUP_BY_PHONE = {DEDUP_BY_PHONE}",
-    f"DEDUP_BY_NOKP = {DEDUP_BY_NOKP}",
-    f"READ_ALL_SHEETS = {READ_ALL_SHEETS}",
-    "",
-    "KAUM NOTE",
-    "FINAL KAUM BUCKETS = MELAYU, CINA, INDIA, LAIN-LAIN",
-    "ORANG ASLI, BUMI, AND ANY OTHER KAUM = LAIN-LAIN",
-    "",
-    "SIKAP NOTE",
-    "KELABU = any value containing KELABU, including KELABU-BARU and KELABU-LAMA",
-    "",
-    "OUTPUT COUNT",
-    ""
-]
-
-label_cols, sort_cols = get_group_columns()
-
-sort_existing = [c for c in sort_cols if c in df.columns]
-
-if sort_existing:
-    df = df.sort_values(sort_existing).copy()
-
-split_col = None
-
-if SPLIT_BY_GENDER_CODE:
-    split_col = "code"
-
-elif SPLIT_BY_KAUM:
-    split_col = "kaum_clean"
-
-total_files_created = 0
-
-# ============================================================
-# CASE 1 — NO GROUPING
-# ============================================================
-
-if not label_cols:
-    base_folder = OUTPUT_ROOT
-    os.makedirs(base_folder, exist_ok=True)
-
-    if split_col:
-        split_groups = df.groupby(split_col, dropna=False, sort=False)
-
-        for split_value, split_group in tqdm(split_groups, desc="Writing files"):
-            if split_group.empty and not CREATE_EMPTY_FILES:
-                continue
-
-            export_df = build_wa_df(split_group)
-
-            out_file = f"{safe_file_label(split_value)}.xlsx"
+            out_file = "OUTPUT.xlsx"
             out_path = os.path.join(base_folder, out_file)
 
             save_xlsx_no_style(export_df, out_path)
 
             total_files_created += 1
-            summary_lines.append(f"{safe_file_label(split_value)} = {format_count(len(split_group))}")
+            summary_lines.append(f"OUTPUT = {format_count(len(df))}")
 
-            if PRINT_SAVED_LINES:
-                print(f"Saved: {out_path} ({format_count(len(split_group))} rows)")
+    # ========================================================
+    # CASE 2 — GROUPING
+    # ========================================================
 
     else:
-        export_df = build_wa_df(df)
+        grouped = df.groupby(label_cols, dropna=False, sort=False)
 
-        out_file = "OUTPUT.xlsx"
-        out_path = os.path.join(base_folder, out_file)
+        for group_key, group in grouped:
+            if not isinstance(group_key, tuple):
+                group_key = (group_key,)
 
-        save_xlsx_no_style(export_df, out_path)
+            group_labels = [safe_file_label(x) for x in group_key]
 
-        total_files_created += 1
-        summary_lines.append(f"OUTPUT = {format_count(len(df))}")
+            if len(group_labels) == 1:
+                if last_group_as_folder:
+                    folder_parts = group_labels
+                    file_base = group_labels[-1]
 
-        if PRINT_SAVED_LINES:
-            print(f"Saved: {out_path} ({format_count(len(df))} rows)")
+                else:
+                    folder_parts = []
+                    file_base = group_labels[-1]
 
-# ============================================================
-# CASE 2 — GROUPING
-# ============================================================
-
-else:
-    grouped = df.groupby(label_cols, dropna=False, sort=False)
-
-    for group_key, group in tqdm(grouped, desc="Writing outputs"):
-        if not isinstance(group_key, tuple):
-            group_key = (group_key,)
-
-        group_labels = [safe_file_label(x) for x in group_key]
-
-        if len(group_labels) == 1:
-            if LAST_GROUP_AS_FOLDER:
-                folder_parts = group_labels
-                file_base = group_labels[-1]
             else:
-                folder_parts = []
-                file_base = group_labels[-1]
+                if last_group_as_folder:
+                    folder_parts = group_labels
+                    file_base = group_labels[-1]
 
-        else:
-            if LAST_GROUP_AS_FOLDER:
-                folder_parts = group_labels
-                file_base = group_labels[-1]
+                else:
+                    folder_parts = group_labels[:-1]
+                    file_base = group_labels[-1]
+
+            out_folder = os.path.join(output_dir, *folder_parts)
+            os.makedirs(out_folder, exist_ok=True)
+
+            display_path = " / ".join(group_labels)
+            summary_lines.append(f"{display_path} = {format_count(len(group))}")
+
+            if split_col:
+                split_items = get_split_items(group, split_col)
+
+                for split_value, split_group in split_items:
+                    if split_group.empty and not create_empty_files:
+                        continue
+
+                    split_label = safe_file_label(split_value)
+                    export_df = build_wa_df(split_group)
+
+                    out_file = f"{file_base} {split_label}.xlsx"
+                    out_file = sanitize(out_file)
+                    out_path = os.path.join(out_folder, out_file)
+
+                    save_xlsx_no_style(export_df, out_path)
+
+                    total_files_created += 1
+                    summary_lines.append(f"  {split_label} = {format_count(len(split_group))}")
+
             else:
-                folder_parts = group_labels[:-1]
-                file_base = group_labels[-1]
-
-        out_folder = os.path.join(OUTPUT_ROOT, *folder_parts)
-        os.makedirs(out_folder, exist_ok=True)
-
-        display_path = " / ".join(group_labels)
-        summary_lines.append(f"{display_path} = {format_count(len(group))}")
-
-        if split_col:
-            split_groups = group.groupby(split_col, dropna=False, sort=False)
-
-            for split_value, split_group in split_groups:
-                if split_group.empty and not CREATE_EMPTY_FILES:
+                if group.empty and not create_empty_files:
                     continue
 
-                split_label = safe_file_label(split_value)
-                export_df = build_wa_df(split_group)
+                export_df = build_wa_df(group)
 
-                out_file = f"{file_base} {split_label}.xlsx"
+                out_file = f"{file_base}.xlsx"
                 out_file = sanitize(out_file)
                 out_path = os.path.join(out_folder, out_file)
 
                 save_xlsx_no_style(export_df, out_path)
 
                 total_files_created += 1
-                summary_lines.append(f"  {split_label} = {format_count(len(split_group))}")
 
-                if PRINT_SAVED_LINES:
-                    print(f"Saved: {out_path} ({format_count(len(split_group))} rows)")
+            summary_lines.append("")
 
-        else:
-            if group.empty and not CREATE_EMPTY_FILES:
-                continue
+    # ========================================================
+    # SUMMARY FILE
+    # ========================================================
 
-            export_df = build_wa_df(group)
+    summary_text = "\n".join(summary_lines)
 
-            out_file = f"{file_base}.xlsx"
-            out_file = sanitize(out_file)
-            out_path = os.path.join(out_folder, out_file)
+    summary_path = os.path.join(output_dir, "SUMMARY.txt")
 
-            save_xlsx_no_style(export_df, out_path)
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(summary_text)
 
-            total_files_created += 1
+    # ========================================================
+    # ZIP
+    # ========================================================
 
-            if PRINT_SAVED_LINES:
-                print(f"Saved: {out_path} ({format_count(len(group))} rows)")
+    emit(progress_callback, "Creating ZIP...")
 
-        summary_lines.append("")
+    zip_base = os.path.join(os.path.dirname(output_dir), zip_name)
+    zip_path = shutil.make_archive(zip_base, "zip", output_dir)
 
-# ============================================================
-# SUMMARY FILE
-# ============================================================
+    emit(progress_callback, "Done.")
 
-summary_text = "\n".join(summary_lines)
-
-summary_path = os.path.join(OUTPUT_ROOT, "SUMMARY.txt")
-
-with open(summary_path, "w", encoding="utf-8") as f:
-    f.write(summary_text)
-
-if PRINT_FULL_SUMMARY_ON_SCREEN:
-    print("\n" + "=" * 60)
-    print(summary_text)
-    print("=" * 60)
-
-else:
-    print("\nDONE WRITING FILES")
-    print("=" * 40)
-    print(f"Final rows          : {format_count(len(df))}")
-    print(f"Excel files created : {format_count(total_files_created)}")
-    print(f"Summary saved       : {summary_path}")
-    print("=" * 40)
-
-# ============================================================
-# ZIP + DOWNLOAD
-# ============================================================
-
-zip_path = shutil.make_archive(ZIP_NAME, "zip", OUTPUT_ROOT)
-files.download(zip_path)
-
-print("ZIP downloaded.")
+    return {
+        "final_rows": int(len(df)),
+        "files_created": int(total_files_created),
+        "zip_path": zip_path,
+        "summary_path": summary_path,
+        "summary_text": summary_text,
+    }
