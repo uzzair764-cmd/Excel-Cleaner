@@ -3,7 +3,7 @@ import re
 import tempfile
 import streamlit as st
 
-from processor import run_export
+from processors.wa_processor import run_export
 
 
 st.set_page_config(
