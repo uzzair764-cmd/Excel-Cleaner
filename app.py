@@ -271,7 +271,7 @@ st.markdown(
 
 
 with st.sidebar:
-    st.header("Settings")
+    st.header("Configurations")
 
     input_level = st.selectbox(
         "Input Level",
