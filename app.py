@@ -1,140 +1,516 @@
-import streamlit as st
-import tempfile
+%%writefile app.py
 import os
-import shutil
+import re
+import tempfile
+import streamlit as st
+
 from processor import run_export
+
+
+# ============================================================
+# PAGE CONFIG
+# ============================================================
 
 st.set_page_config(
     page_title="WA Exporter",
     page_icon="🍇",
-    layout="centered"
+    layout="wide"
 )
 
-st.title("🍇 WA Exporter")
-st.caption("Clean Excel to WhatsApp import format")
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 1200px;
+    }
+
+    div[data-testid="stSidebar"] {
+        background-color: #fafafa;
+    }
+
+    .main-title {
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 0.2rem;
+    }
+
+    .sub-title {
+        color: #666;
+        margin-bottom: 2rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def safe_filename(name):
+    name = os.path.basename(str(name))
+    name = re.sub(r'[\\/*?:"<>|]', "_", name)
+    return name
+
+
+def csv_to_list(text):
+    text = str(text).strip()
+
+    if text == "":
+        return []
+
+    return [x.strip().upper() for x in text.split(",") if x.strip() != ""]
+
+
+def normalize_bucket(x):
+    x = str(x).strip().upper()
+    x = x.replace("_", " ")
+    x = x.replace("LAIN LAIN", "LAIN-LAIN")
+    x = x.replace("LAINLAIN", "LAIN-LAIN")
+
+    if x not in ["MELAYU", "CINA", "INDIA", "LAIN-LAIN"]:
+        return "LAIN-LAIN"
+
+    return x
+
+
+def normalize_sikap_config(x):
+    x = str(x).strip().upper()
+    x = x.replace("_", " ")
+
+    if "KELABU" in x:
+        return "KELABU"
+
+    if "HITAM" in x:
+        return "HITAM"
+
+    if "PUTIH" in x:
+        return "PUTIH"
+
+    return x
+
+
+def get_structure_options(input_level):
+    if input_level == "DUN":
+        return {
+            "DUN folder > individual DM Excel files": "DUN_DM_FILE",
+            "DUN folder > DM folder > one Excel inside each DM folder": "DUN_DM_FOLDER",
+            "DUN folder > DM folder > separate KAUM Excel files": "DUN_DM_KAUM",
+            "DUN folder > one DUN Excel file": "DUN_FILE",
+            "DUN folder > separate KAUM Excel files": "DUN_KAUM",
+            "ONE Excel file only": "ONE_FILE",
+            "AGE range Excel files only": "AGE_FILE",
+        }
+
+    if input_level == "PARLIMEN":
+        return {
+            "PARLIMEN folder > DUN folder > individual DM Excel files": "PARLIMEN_DUN_DM_FILE",
+            "PARLIMEN folder > DUN folder > DM folder > one Excel inside each DM folder": "PARLIMEN_DUN_DM_FOLDER",
+            "PARLIMEN folder > DUN folder > DM folder > separate KAUM Excel files": "PARLIMEN_DUN_DM_KAUM",
+            "PARLIMEN folder > DUN Excel files": "PARLIMEN_DUN_FILE",
+            "PARLIMEN folder > one PARLIMEN Excel file": "PARLIMEN_FILE",
+            "PARLIMEN folder > DUN folder > separate KAUM Excel files": "PARLIMEN_DUN_KAUM",
+            "ONE Excel file only": "ONE_FILE",
+            "AGE range Excel files only": "AGE_FILE",
+        }
+
+    return {
+        "ONE Excel file only": "ONE_FILE",
+        "DUN folder > individual DM Excel files": "DUN_DM_FILE",
+        "DUN folder > DM folder > one Excel inside each DM folder": "DUN_DM_FOLDER",
+        "DUN folder > DM folder > separate KAUM Excel files": "DUN_DM_KAUM",
+        "PARLIMEN folder > DUN folder > individual DM Excel files": "PARLIMEN_DUN_DM_FILE",
+        "PARLIMEN folder > DUN folder > DM folder > separate KAUM Excel files": "PARLIMEN_DUN_DM_KAUM",
+        "KAUM folders > one Excel inside each kaum folder": "KAUM_FOLDER",
+        "AGE range Excel files only": "AGE_FILE",
+    }
+
+
+def map_structure_to_config(structure_code):
+    force_split_by_kaum = False
+
+    if structure_code == "ONE_FILE":
+        group_levels = []
+        last_group_as_folder = False
+
+    elif structure_code == "DUN_DM_FILE":
+        group_levels = ["DUN", "DM"]
+        last_group_as_folder = False
+
+    elif structure_code == "DUN_DM_FOLDER":
+        group_levels = ["DUN", "DM"]
+        last_group_as_folder = True
+
+    elif structure_code == "DUN_DM_KAUM":
+        group_levels = ["DUN", "DM"]
+        last_group_as_folder = True
+        force_split_by_kaum = True
+
+    elif structure_code == "DUN_FILE":
+        group_levels = ["DUN"]
+        last_group_as_folder = True
+
+    elif structure_code == "DUN_KAUM":
+        group_levels = ["DUN"]
+        last_group_as_folder = True
+        force_split_by_kaum = True
+
+    elif structure_code == "PARLIMEN_DUN_DM_FILE":
+        group_levels = ["PARLIMEN", "DUN", "DM"]
+        last_group_as_folder = False
+
+    elif structure_code == "PARLIMEN_DUN_DM_FOLDER":
+        group_levels = ["PARLIMEN", "DUN", "DM"]
+        last_group_as_folder = True
+
+    elif structure_code == "PARLIMEN_DUN_DM_KAUM":
+        group_levels = ["PARLIMEN", "DUN", "DM"]
+        last_group_as_folder = True
+        force_split_by_kaum = True
+
+    elif structure_code == "PARLIMEN_DUN_FILE":
+        group_levels = ["PARLIMEN", "DUN"]
+        last_group_as_folder = False
+
+    elif structure_code == "PARLIMEN_FILE":
+        group_levels = ["PARLIMEN"]
+        last_group_as_folder = True
+
+    elif structure_code == "PARLIMEN_DUN_KAUM":
+        group_levels = ["PARLIMEN", "DUN"]
+        last_group_as_folder = True
+        force_split_by_kaum = True
+
+    elif structure_code == "KAUM_FOLDER":
+        group_levels = ["KAUM"]
+        last_group_as_folder = True
+
+    elif structure_code == "AGE_FILE":
+        group_levels = ["AGE"]
+        last_group_as_folder = False
+
+    else:
+        group_levels = ["DUN", "DM"]
+        last_group_as_folder = False
+
+    return group_levels, last_group_as_folder, force_split_by_kaum
+
+
+def build_keep_kaum(kaum_filter, custom_kaum):
+    if kaum_filter == "ALL":
+        return ["ALL"]
+
+    if kaum_filter == "MCI":
+        return ["MELAYU", "CINA", "INDIA"]
+
+    if kaum_filter in ["MELAYU", "CINA", "INDIA", "LAIN-LAIN"]:
+        return [kaum_filter]
+
+    custom = csv_to_list(custom_kaum)
+    custom = [normalize_bucket(x) for x in custom]
+    custom = [x for x in custom if x in ["MELAYU", "CINA", "INDIA", "LAIN-LAIN"]]
+
+    return custom if custom else ["ALL"]
+
+
+def build_sikap_filter(sikap_filter, custom_sikap):
+    if sikap_filter == "NONE":
+        return []
+
+    if sikap_filter == "HITAM":
+        return ["HITAM"]
+
+    if sikap_filter == "KELABU":
+        return ["KELABU"]
+
+    if sikap_filter == "PUTIH":
+        return ["PUTIH"]
+
+    if sikap_filter == "HITAM_KELABU":
+        return ["HITAM", "KELABU"]
+
+    if sikap_filter == "KELABU_PUTIH":
+        return ["KELABU", "PUTIH"]
+
+    return [normalize_sikap_config(x) for x in csv_to_list(custom_sikap)]
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown('<div class="main-title">🍇 WA Exporter</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="sub-title">Clean Excel files into WhatsApp import format with DUN / DM / KAUM / AGE filters.</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# SIDEBAR SETTINGS
+# ============================================================
+
+with st.sidebar:
+    st.header("Settings")
+
+    input_level = st.selectbox(
+        "Input Level",
+        ["DUN", "PARLIMEN", "MIXED"],
+        index=0
+    )
+
+    structure_options = get_structure_options(input_level)
+    structure_label = st.selectbox(
+        "Output Structure",
+        list(structure_options.keys()),
+        index=0
+    )
+    structure_code = structure_options[structure_label]
+
+    split_mode = st.selectbox(
+        "Split File Mode",
+        [
+            "All rows in ONE Excel",
+            "Separate Excel files by KAUM",
+            "Separate Excel files by gender code",
+        ],
+        index=0
+    )
+
+    st.divider()
+
+    kaum_filter = st.selectbox(
+        "Kaum Filter",
+        [
+            "ALL",
+            "MCI",
+            "MELAYU",
+            "CINA",
+            "INDIA",
+            "LAIN-LAIN",
+            "CUSTOM",
+        ],
+        format_func=lambda x: {
+            "ALL": "Keep ALL rows — final buckets MELAYU/CINA/INDIA/LAIN-LAIN",
+            "MCI": "Keep only MELAYU, CINA, INDIA",
+            "MELAYU": "Keep only MELAYU",
+            "CINA": "Keep only CINA",
+            "INDIA": "Keep only INDIA",
+            "LAIN-LAIN": "Keep only LAIN-LAIN",
+            "CUSTOM": "Custom bucket filter",
+        }[x],
+        index=0
+    )
+
+    custom_kaum = st.text_input(
+        "Custom Kaum",
+        placeholder="Example: MELAYU,CINA,INDIA,LAIN-LAIN"
+    )
+
+    sikap_filter = st.selectbox(
+        "Sikap Filter",
+        [
+            "NONE",
+            "HITAM",
+            "KELABU",
+            "PUTIH",
+            "HITAM_KELABU",
+            "KELABU_PUTIH",
+            "CUSTOM",
+        ],
+        format_func=lambda x: {
+            "NONE": "No sikap filter",
+            "HITAM": "HITAM only",
+            "KELABU": "KELABU only",
+            "PUTIH": "PUTIH only",
+            "HITAM_KELABU": "HITAM + KELABU",
+            "KELABU_PUTIH": "KELABU + PUTIH",
+            "CUSTOM": "Custom sikap filter",
+        }[x],
+        index=0
+    )
+
+    custom_sikap = st.text_input(
+        "Custom Sikap",
+        placeholder="Example: HITAM,KELABU,PUTIH"
+    )
+
+    party_filter_text = st.text_input(
+        "Party / Parti Filter",
+        placeholder="Leave blank for no filter. Example: PKR"
+    )
+
+    st.divider()
+
+    use_age_filter = st.checkbox("Apply manual age filter", value=False)
+
+    col_age_1, col_age_2 = st.columns(2)
+
+    with col_age_1:
+        min_age = st.number_input(
+            "Min age",
+            min_value=0,
+            max_value=120,
+            value=18,
+            step=1
+        )
+
+    with col_age_2:
+        max_age_text = st.text_input(
+            "Max age",
+            placeholder="Blank = no max"
+        )
+
+    st.divider()
+
+    dedup_by_phone = st.checkbox("Remove duplicate phone numbers", value=True)
+    dedup_by_nokp = st.checkbox("Remove duplicate NO KP if column exists", value=True)
+    read_all_sheets = st.checkbox("Read all sheets from each workbook", value=True)
+    create_empty_files = st.checkbox("Create empty Excel files", value=False)
+
+    st.divider()
+
+    print_full_summary = st.checkbox("Show full summary after processing", value=False)
+
+
+# ============================================================
+# MAIN FILE UPLOAD
+# ============================================================
 
 uploaded_files = st.file_uploader(
-    "Upload Excel files",
+    "Upload Excel file(s)",
     type=["xlsx", "xls"],
     accept_multiple_files=True
 )
 
-st.sidebar.header("Settings")
+run_button = st.button("🍇 Run Export", type="primary", use_container_width=True)
 
-input_level = st.sidebar.selectbox(
-    "Input Level",
-    ["DUN", "PARLIMEN", "MIXED"]
-)
 
-structure = st.sidebar.selectbox(
-    "Output Structure",
-    [
-        "DUN folder > individual DM Excel files",
-        "DUN folder > DM folder > one Excel inside each DM folder",
-        "DUN folder > DM folder > separate KAUM Excel files",
-        "DUN folder > one DUN Excel file",
-        "DUN folder > separate KAUM Excel files",
-        "PARLIMEN folder > DUN folder > individual DM Excel files",
-        "PARLIMEN folder > DUN folder > DM folder > separate KAUM Excel files",
-        "ONE Excel file only",
-        "AGE range Excel files only",
-    ]
-)
-
-split_mode = st.sidebar.selectbox(
-    "Split File Mode",
-    [
-        "All rows in one Excel",
-        "Separate Excel files by KAUM",
-        "Separate Excel files by gender code",
-    ]
-)
-
-kaum_filter = st.sidebar.selectbox(
-    "Kaum Filter",
-    [
-        "ALL",
-        "MELAYU,CINA,INDIA",
-        "MELAYU",
-        "CINA",
-        "INDIA",
-        "LAIN-LAIN",
-    ]
-)
-
-sikap_filter = st.sidebar.selectbox(
-    "Sikap Filter",
-    [
-        "No filter",
-        "HITAM",
-        "KELABU",
-        "PUTIH",
-        "HITAM,KELABU",
-        "KELABU,PUTIH",
-    ]
-)
-
-party_filter = st.sidebar.text_input("Party filter", placeholder="Example: PKR")
-
-use_age_filter = st.sidebar.checkbox("Apply age filter")
-min_age = st.sidebar.number_input("Min age", min_value=0, max_value=120, value=18)
-max_age_text = st.sidebar.text_input("Max age", placeholder="Blank = no max")
-
-dedup_phone = st.sidebar.checkbox("Remove duplicate phone numbers", value=True)
-dedup_nokp = st.sidebar.checkbox("Remove duplicate NO KP", value=True)
-read_all_sheets = st.sidebar.checkbox("Read all sheets", value=True)
-
-run_button = st.button("🍇 Run Export", type="primary")
+# ============================================================
+# RUN EXPORT
+# ============================================================
 
 if run_button:
     if not uploaded_files:
         st.error("Upload at least one Excel file first.")
         st.stop()
 
+    group_levels, last_group_as_folder, force_split_by_kaum = map_structure_to_config(structure_code)
+
+    if force_split_by_kaum:
+        split_by_kaum = True
+        split_by_gender_code = False
+    else:
+        split_by_kaum = split_mode == "Separate Excel files by KAUM"
+        split_by_gender_code = split_mode == "Separate Excel files by gender code"
+
+    if "KAUM" in group_levels and split_by_kaum:
+        split_by_kaum = False
+
+    keep_kaum = build_keep_kaum(kaum_filter, custom_kaum)
+    sikap_filter_list = build_sikap_filter(sikap_filter, custom_sikap)
+    party_filter = csv_to_list(party_filter_text)
+
+    if use_age_filter:
+        max_age_text_clean = str(max_age_text).strip()
+
+        if max_age_text_clean == "":
+            age_filter = (int(min_age), None)
+        else:
+            age_filter = (int(min_age), int(max_age_text_clean))
+    else:
+        age_filter = None
+
     with tempfile.TemporaryDirectory() as temp_dir:
         input_dir = os.path.join(temp_dir, "input")
         output_dir = os.path.join(temp_dir, "voter_outputs")
+
         os.makedirs(input_dir, exist_ok=True)
 
-        saved_paths = []
+        file_paths = []
 
-        for uploaded_file in uploaded_files:
-            file_path = os.path.join(input_dir, uploaded_file.name)
+        for i, uploaded_file in enumerate(uploaded_files, start=1):
+            clean_name = safe_filename(uploaded_file.name)
+            file_path = os.path.join(input_dir, f"{i}_{clean_name}")
 
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
 
-            saved_paths.append(file_path)
+            file_paths.append(file_path)
 
         config = {
-            "input_level": input_level,
-            "structure": structure,
-            "split_mode": split_mode,
-            "kaum_filter": kaum_filter,
-            "sikap_filter": sikap_filter,
-            "party_filter": party_filter,
-            "use_age_filter": use_age_filter,
-            "min_age": min_age,
-            "max_age": max_age_text,
-            "dedup_phone": dedup_phone,
-            "dedup_nokp": dedup_nokp,
-            "read_all_sheets": read_all_sheets,
             "output_dir": output_dir,
+            "zip_name": "voter_outputs",
+            "input_level": input_level,
+            "group_levels": group_levels,
+            "last_group_as_folder": last_group_as_folder,
+            "split_by_kaum": split_by_kaum,
+            "split_by_gender_code": split_by_gender_code,
+            "keep_kaum": keep_kaum,
+            "sikap_filter": sikap_filter_list,
+            "party_filter": party_filter,
+            "age_filter": age_filter,
+            "dedup_by_phone": dedup_by_phone,
+            "dedup_by_nokp": dedup_by_nokp,
+            "read_all_sheets": read_all_sheets,
+            "create_empty_files": create_empty_files,
         }
 
-        with st.status("Processing files...", expanded=True) as status:
-            result = run_export(saved_paths, config)
-            status.update(label="Done", state="complete")
+        status_box = st.empty()
 
-        st.success("Export completed.")
+        def progress_callback(message):
+            status_box.info(message)
 
-        st.write(f"Final rows: **{result['final_rows']:,}**")
-        st.write(f"Excel files created: **{result['files_created']:,}**")
+        try:
+            with st.spinner("Processing files..."):
+                result = run_export(
+                    file_paths=file_paths,
+                    config=config,
+                    progress_callback=progress_callback
+                )
 
-        with open(result["zip_path"], "rb") as f:
-            st.download_button(
-                label="Download ZIP",
-                data=f,
-                file_name="voter_outputs.zip",
-                mime="application/zip"
-            )
+            with open(result["zip_path"], "rb") as f:
+                zip_bytes = f.read()
+
+            st.session_state["zip_bytes"] = zip_bytes
+            st.session_state["summary_text"] = result["summary_text"]
+            st.session_state["final_rows"] = result["final_rows"]
+            st.session_state["files_created"] = result["files_created"]
+
+            status_box.empty()
+            st.success("Done.")
+
+        except Exception as e:
+            status_box.empty()
+            st.error(str(e))
+            st.stop()
+
+
+# ============================================================
+# RESULT DISPLAY
+# ============================================================
+
+if "zip_bytes" in st.session_state:
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("Final rows", f"{st.session_state['final_rows']:,}")
+
+    with col2:
+        st.metric("Excel files created", f"{st.session_state['files_created']:,}")
+
+    st.download_button(
+        label="Download ZIP",
+        data=st.session_state["zip_bytes"],
+        file_name="voter_outputs.zip",
+        mime="application/zip",
+        type="primary",
+        use_container_width=True
+    )
+
+    if print_full_summary:
+        with st.expander("View SUMMARY.txt", expanded=False):
+            st.text(st.session_state["summary_text"])
