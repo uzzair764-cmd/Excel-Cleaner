@@ -1,11 +1,9 @@
-%%writefile app.py
 import os
 import re
 import tempfile
 import streamlit as st
 
 from processor import run_export
-
 
 # ============================================================
 # PAGE CONFIG
