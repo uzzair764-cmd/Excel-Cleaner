@@ -5,13 +5,14 @@ import streamlit as st
 
 from processor import run_export
 
+
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
     page_title="WA Exporter",
-    page_icon="🍇",
+    page_icon="whatsapp.png",
     layout="wide"
 )
 
@@ -28,10 +29,17 @@ st.markdown(
         background-color: #fafafa;
     }
 
+    .title-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 0.2rem;
+    }
+
     .main-title {
         font-size: 2.2rem;
         font-weight: 700;
-        margin-bottom: 0.2rem;
+        margin: 0;
     }
 
     .sub-title {
@@ -240,7 +248,14 @@ def build_sikap_filter(sikap_filter, custom_sikap):
 # HEADER
 # ============================================================
 
-st.markdown('<div class="main-title">🍇 WA Exporter</div>', unsafe_allow_html=True)
+col_logo, col_title = st.columns([0.07, 0.93])
+
+with col_logo:
+    st.image("whatsapp.png", width=54)
+
+with col_title:
+    st.markdown('<div class="main-title">WA Exporter</div>', unsafe_allow_html=True)
+
 st.markdown(
     '<div class="sub-title">Clean Excel files into WhatsApp import format with DUN / DM / KAUM / AGE filters.</div>',
     unsafe_allow_html=True
@@ -252,6 +267,7 @@ st.markdown(
 # ============================================================
 
 with st.sidebar:
+    st.image("whatsapp.png", width=42)
     st.header("Settings")
 
     input_level = st.selectbox(
@@ -384,7 +400,7 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-run_button = st.button("🍇 Run Export", type="primary", use_container_width=True)
+run_button = st.button("Run Export", type="primary", use_container_width=True)
 
 
 # ============================================================
