@@ -332,7 +332,7 @@ with st.sidebar:
             "CUSTOM",
         ],
         format_func=lambda x: {
-            "NONE": "No sikap filter",
+            "NONE": "NO FILTER",
             "HITAM": "HITAM only",
             "KELABU": "KELABU only",
             "PUTIH": "PUTIH only",
