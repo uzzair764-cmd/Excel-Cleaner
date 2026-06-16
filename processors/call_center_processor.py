@@ -4,6 +4,8 @@ import re
 import zipfile
 import pandas as pd
 
+from processors.demografik_processor import write_demografik_xlsx_bytes
+
 
 FINAL_COLUMNS = [
     "id", "nokp", "name", "umur", "jantina", "kaum_spr", "number",
@@ -112,7 +114,6 @@ def clean_numbers(df):
 
 def build_output_df(df, id_prefix, start_num):
     df = df.copy()
-
     df = df.drop(columns=["id", "umur2", "kategori_kaum"], errors="ignore")
 
     row_count = len(df)
@@ -156,12 +157,7 @@ def write_xlsx_bytes(df):
         for col_idx, col_name in enumerate(df.columns):
             worksheet.write(0, col_idx, col_name, header_fmt)
 
-        worksheet.set_column(
-            0,
-            len(df.columns) - 1,
-            18,
-            cell_fmt
-        )
+        worksheet.set_column(0, len(df.columns) - 1, 18, cell_fmt)
 
     output.seek(0)
     return output.getvalue()
@@ -204,6 +200,8 @@ def run_cleaner(uploaded_files, start_id):
             df = standardize_columns(raw_df)
             df = clean_text(df)
 
+            demografik_bytes = write_demografik_xlsx_bytes(df, base_name)
+
             cleaned_df, stats = clean_numbers(df)
 
             output_df, current_num = build_output_df(
@@ -215,6 +213,11 @@ def run_cleaner(uploaded_files, start_id):
             zipf.writestr(
                 f"{base_name}/{base_name}.xlsx",
                 write_xlsx_bytes(output_df)
+            )
+
+            zipf.writestr(
+                f"{base_name}/DEMOGRAFIK {base_name}.xlsx",
+                demografik_bytes
             )
 
             csv_chunks = write_csv_chunks(output_df, chunk_size=50000)
