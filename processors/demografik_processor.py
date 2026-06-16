@@ -10,17 +10,14 @@ TEL_COLS = ["PEMILIH", "POLIS", "ASKAR"]
 
 def normalise_race(value):
     r = str(value).strip().upper()
-
     if r in ["MELAYU", "CINA", "INDIA"]:
         return r
-
     return "LAIN-LAIN"
 
 
 def age_group(value):
     try:
         a = int(float(value))
-
         if 18 <= a <= 25:
             return "18-25"
         if 26 <= a <= 40:
@@ -31,7 +28,6 @@ def age_group(value):
             return "61>"
     except Exception:
         pass
-
     return ""
 
 
@@ -69,7 +65,6 @@ def prepare_demografik_df(df):
     df["_pemilih_tel"] = raw_number.ne("") & raw_number.str.lower().ne("nan")
 
     service_col = get_service_col(df)
-
     if service_col:
         svc = df[service_col].astype(str).str.strip().str.upper()
     else:
@@ -118,13 +113,8 @@ def split_total_and_percent(rows):
 
     count_cols = ["JUMLAH PENGUNDI"] + RACES + AGE_GROUPS + GENDERS + TEL_COLS
 
-    total_row = {
-        "LABEL": "JUMLAH PENGUNDI"
-    }
-
-    percent_row = {
-        "LABEL": "PERATUSAN"
-    }
+    total_row = {"LABEL": "JUMLAH PENGUNDI"}
+    percent_row = {"LABEL": "PERATUSAN"}
 
     for col in count_cols:
         total_row[col] = int(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
@@ -160,19 +150,15 @@ def format_parlimen_label(df, base_name):
 
 def format_dun_code(kod_dun):
     kod = str(kod_dun).strip()
-
     if not kod:
         return ""
-
     return f"N.{kod[-2:].zfill(2)}"
 
 
 def format_dm_code(kod_dm):
     kod = str(kod_dm).strip()
-
     if not kod:
         return ""
-
     return f"DM.{kod[-2:].zfill(2)}"
 
 
@@ -336,8 +322,6 @@ def write_demografik_table(ws, start_row, title, subtitle, rows, name_header, fo
 
     ws.write(r, 0, subtitle, formats["subtitle"])
 
-    # Legend repeated for every section.
-    # This places legend with only 1 row gap from the table header after the title/subtitle block.
     write_legend(ws, r + 1, formats)
 
     r += 4
@@ -369,7 +353,6 @@ def write_demografik_table(ws, start_row, title, subtitle, rows, name_header, fo
         )
 
         is_bukan_melayu = non_melayu > melayu
-
         max_name_len = max(max_name_len, len(str(row.get("NAMA", ""))))
 
         for c, col in enumerate(columns):
@@ -384,11 +367,9 @@ def write_demografik_table(ws, start_row, title, subtitle, rows, name_header, fo
 
         r += 1
 
-    # Leave one gap between data table and total/percentage rows.
     r += 1
 
     if total_row:
-        # Bottom total table starts at column B.
         ws.write(r, 1, "JUMLAH PENGUNDI", formats["total_left"])
 
         for c, col in enumerate(columns[2:], start=2):
@@ -397,7 +378,6 @@ def write_demografik_table(ws, start_row, title, subtitle, rows, name_header, fo
         r += 1
 
     if percent_row:
-        # Bottom percentage table starts at column B.
         ws.write(r, 1, "PERATUSAN", formats["percent_left"])
         ws.write(r, 2, "", formats["percent_center"])
 
@@ -405,6 +385,8 @@ def write_demografik_table(ws, start_row, title, subtitle, rows, name_header, fo
             ws.write(r, c, percent_row.get(col, 0), formats["percent_center"])
 
         r += 1
+
+    ws.set_h_pagebreaks([r])
 
     return r + 2, max_name_len
 
@@ -421,11 +403,10 @@ def write_demografik_xlsx_bytes(raw_df, base_name):
 
         formats = make_formats(workbook)
 
-        # Column widths
-        sheet.set_column(0, 0, 8)     # A
-        sheet.set_column(1, 1, 20)    # B min, may stretch later
-        sheet.set_column(2, 2, 20)    # C
-        sheet.set_column(3, 15, 9)    # D:P
+        sheet.set_column(0, 0, 8)
+        sheet.set_column(1, 1, 20)
+        sheet.set_column(2, 2, 20)
+        sheet.set_column(3, 15, 9)
 
         parl_label = format_parlimen_label(df, base_name)
 
@@ -482,7 +463,6 @@ def write_demografik_xlsx_bytes(raw_df, base_name):
 
             max_b_width = max(max_b_width, section_b_width + 2)
 
-        # Column B: minimum 20, stretches for long DUN/DM names
         sheet.set_column(1, 1, max(20, min(max_b_width, 60)))
 
     output.seek(0)
