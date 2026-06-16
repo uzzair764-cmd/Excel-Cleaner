@@ -1,113 +1,216 @@
-import streamlit as st
+import io
+import os
+import re
+import zipfile
 import pandas as pd
-from processors.call_center_processor import (
-    read_input_file,
-    standardize_columns,
-    clean_text_columns,
-    process_files
-)
 
-st.set_page_config(
-    page_title="Call Center Cleaner",
-    page_icon="📞",
-    layout="wide"
-)
 
-st.title("📞 Call Center Number Cleaner")
-st.caption("Clean call center Excel/CSV files, remove invalid phone numbers, split CSVs, and export ZIP.")
+FINAL_COLUMNS = [
+    "id", "nokp", "name", "umur", "jantina", "kaum_spr", "number",
+    "kod_lokaliti", "nama_lokaliti", "kod_dm", "nama_dm",
+    "kod_dun", "nama_dun", "kod_parlimen", "nama_parlimen",
+    "kod_negeri", "nama_negeri", "sikap", "party"
+]
 
-uploaded_files = st.file_uploader(
-    "Upload Excel or CSV files",
-    type=["xlsx", "csv"],
-    accept_multiple_files=True
-)
+COLUMN_MAP = {
+    "nama": "name",
+    "phone 1": "number",
+    "bangsa": "kaum_spr",
+    "kod lokaliti": "kod_lokaliti",
+    "lokaliti": "nama_lokaliti",
+    "kod dm": "kod_dm",
+    "dm": "nama_dm",
+    "kod dun": "kod_dun",
+    "dun": "nama_dun",
+    "kod parlimen": "kod_parlimen",
+    "parlimen": "nama_parlimen",
+    "kelas": "sikap",
+}
 
-with st.sidebar:
-    st.header("Cleaning Options")
 
-    start_id = st.text_input(
-        "Starting ID",
-        value="CJ1000",
-        help="Output will start from +1. Example CJ1000 → CJ1001"
+def parse_start_id(start_id):
+    match = re.match(r"^(.*?)(\d+)$", str(start_id).strip())
+    if not match:
+        raise ValueError("ID must end with number. Example: CJ1000")
+    return match.group(1), int(match.group(2)) + 1
+
+
+def read_file(uploaded_file):
+    name = uploaded_file.name.lower()
+
+    if name.endswith(".csv"):
+        return pd.read_csv(uploaded_file, dtype=str)
+
+    if name.endswith(".xlsx"):
+        return pd.read_excel(uploaded_file, dtype=str)
+
+    raise ValueError("Only CSV and XLSX files are supported.")
+
+
+def standardize_columns(df):
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    rename = {}
+
+    for col in df.columns:
+        key = col.lower().strip()
+
+        if key in COLUMN_MAP:
+            rename[col] = COLUMN_MAP[key]
+
+        elif key == "negeri":
+            rename[col] = "nama_negeri"
+
+    return df.rename(columns=rename)
+
+
+def clean_text(df):
+    df = df.copy()
+    for col in df.columns:
+        df[col] = df[col].fillna("").astype(str).str.strip()
+    return df
+
+
+def clean_numbers(df, remove_invalid=True, remove_duplicates=True):
+    df = df.copy()
+    total_rows = len(df)
+
+    if "number" not in df.columns:
+        df["number"] = ""
+
+    df["number"] = (
+        df["number"]
+        .fillna("")
+        .astype(str)
+        .str.replace(r"\D", "", regex=True)
+        .str.replace(r"^60", "0", regex=True)
     )
 
-    remove_invalid = st.toggle("Remove invalid phone numbers", value=True)
-    dedupe = st.toggle("Remove duplicate phone numbers", value=True)
-    prefix_6 = st.toggle("Prefix 6 in CSV export", value=True)
-
-    chunk_size = st.number_input(
-        "CSV chunk size",
-        min_value=1000,
-        max_value=500000,
-        value=50000,
-        step=1000
+    invalid_mask = (
+        (df["number"] == "") |
+        (df["number"].str.contains("0000", na=False)) |
+        (~df["number"].str.startswith("01", na=False)) |
+        (~df["number"].str.len().isin([10, 11]))
     )
 
-if uploaded_files:
-    st.subheader("Preview")
+    invalid_removed = int(invalid_mask.sum())
 
-    selected_preview_file = st.selectbox(
-        "Choose file to preview",
-        uploaded_files,
-        format_func=lambda x: x.name
-    )
+    if remove_invalid:
+        df = df.loc[~invalid_mask].copy()
 
-    try:
-        preview_df = read_input_file(selected_preview_file)
-        preview_df = standardize_columns(preview_df)
-        preview_df = clean_text_columns(preview_df)
+    before_dedupe = len(df)
 
-        col1, col2 = st.columns(2)
+    if remove_duplicates:
+        df = df.drop_duplicates(subset=["number"], keep="first").copy()
 
-        with col1:
-            st.metric("Preview Rows", len(preview_df))
+    duplicate_removed = before_dedupe - len(df)
 
-        with col2:
-            st.metric("Detected Columns", len(preview_df.columns))
+    return df.reset_index(drop=True), {
+        "uploaded_rows": total_rows,
+        "invalid_removed": invalid_removed if remove_invalid else 0,
+        "duplicate_removed": duplicate_removed if remove_duplicates else 0,
+        "final_rows": len(df),
+    }
 
-        with st.expander("Detected columns", expanded=False):
-            st.write(list(preview_df.columns))
 
-        st.dataframe(preview_df.head(30), use_container_width=True)
+def build_output_df(df, id_prefix, start_num):
+    df = df.copy()
 
-    except Exception as e:
-        st.error(f"Preview error: {e}")
+    df = df.drop(columns=["id", "umur2", "kategori_kaum"], errors="ignore")
 
-    st.divider()
+    row_count = len(df)
+    df.insert(0, "id", [f"{id_prefix}{i}" for i in range(start_num, start_num + row_count)])
 
-    if st.button("Process Files", type="primary", use_container_width=True):
-        try:
-            with st.spinner("Processing files..."):
-                zip_bytes, summary_df = process_files(
-                    uploaded_files=uploaded_files,
-                    start_id=start_id,
-                    remove_invalid=remove_invalid,
-                    dedupe=dedupe,
-                    prefix_6=prefix_6,
-                    chunk_size=int(chunk_size)
+    for col in FINAL_COLUMNS:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[FINAL_COLUMNS], start_num + row_count
+
+
+def write_xlsx_bytes(df):
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, header=False, startrow=1, sheet_name="Sheet1")
+
+        workbook = writer.book
+        worksheet = writer.sheets["Sheet1"]
+
+        header_fmt = workbook.add_format({"bold": False, "border": 0, "align": "left"})
+        cell_fmt = workbook.add_format({"border": 0, "align": "center"})
+
+        for col_idx, col_name in enumerate(df.columns):
+            worksheet.write(0, col_idx, col_name, header_fmt)
+
+        worksheet.set_column(0, len(df.columns) - 1, 18, cell_fmt)
+
+    output.seek(0)
+    return output.getvalue()
+
+
+def write_csv_chunks(df, chunk_size, prefix_6=True):
+    csv_df = pd.DataFrame({
+        "id": df["id"].astype(str),
+        "name": df["name"].astype(str),
+        "number": ("6" + df["number"].astype(str)) if prefix_6 else df["number"].astype(str),
+    })
+
+    chunks = []
+
+    for chunk_no, start in enumerate(range(0, len(csv_df), chunk_size), start=1):
+        part = csv_df.iloc[start:start + chunk_size]
+        csv_bytes = part.to_csv(
+            index=False,
+            encoding="utf-8-sig",
+            lineterminator="\n"
+        ).encode("utf-8-sig")
+
+        chunks.append((chunk_no, csv_bytes))
+
+    return chunks
+
+
+def run_cleaner(uploaded_files, start_id, chunk_size=50000, remove_invalid=True, remove_duplicates=True, prefix_6=True):
+    id_prefix, current_num = parse_start_id(start_id)
+
+    zip_buffer = io.BytesIO()
+    summary = []
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for file in uploaded_files:
+            base_name = os.path.splitext(file.name)[0]
+
+            raw_df = read_file(file)
+            df = standardize_columns(raw_df)
+            df = clean_text(df)
+
+            cleaned_df, stats = clean_numbers(
+                df,
+                remove_invalid=remove_invalid,
+                remove_duplicates=remove_duplicates
+            )
+
+            output_df, current_num = build_output_df(cleaned_df, id_prefix, current_num)
+
+            zipf.writestr(
+                f"{base_name}/{base_name}.xlsx",
+                write_xlsx_bytes(output_df)
+            )
+
+            csv_chunks = write_csv_chunks(output_df, chunk_size, prefix_6)
+
+            for chunk_no, csv_bytes in csv_chunks:
+                zipf.writestr(
+                    f"{base_name}/CSV/{base_name} {chunk_no}.csv",
+                    csv_bytes
                 )
 
-            st.success("Processing completed.")
+            stats["file"] = file.name
+            stats["csv_chunks"] = len(csv_chunks)
+            summary.append(stats)
 
-            st.subheader("Summary Statistics")
-            st.dataframe(summary_df, use_container_width=True)
+    zip_buffer.seek(0)
 
-            zip_name = (
-                uploaded_files[0].name.rsplit(".", 1)[0] + ".zip"
-                if len(uploaded_files) == 1
-                else "OUTPUT.zip"
-            )
-
-            st.download_button(
-                label="Download ZIP",
-                data=zip_bytes,
-                file_name=zip_name,
-                mime="application/zip",
-                use_container_width=True
-            )
-
-        except Exception as e:
-            st.error(str(e))
-
-else:
-    st.info("Upload one or more Excel/CSV files to begin.")
+    return zip_buffer.getvalue(), pd.DataFrame(summary)
