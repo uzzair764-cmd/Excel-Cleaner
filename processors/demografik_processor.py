@@ -188,7 +188,7 @@ def make_formats(workbook):
         }),
         "subtitle": workbook.add_format({
             "font_name": "Calibri",
-            "font_size": 11,
+            "font_size": 22,
             "bold": True,
             "font_color": "#000000",
             "align": "left",
@@ -336,9 +336,11 @@ def write_demografik_table(ws, start_row, title, subtitle, rows, name_header, fo
 
     ws.write(r, 0, subtitle, formats["subtitle"])
 
+    # Legend repeated for every section.
+    # This places legend with only 1 row gap from the table header after the title/subtitle block.
     write_legend(ws, r + 1, formats)
 
-    r += 5
+    r += 4
 
     ws.merge_range(r, 0, r + 1, 0, "KOD", formats["header"])
     ws.merge_range(r, 1, r + 1, 1, name_header, formats["header"])
@@ -382,10 +384,12 @@ def write_demografik_table(ws, start_row, title, subtitle, rows, name_header, fo
 
         r += 1
 
+    # Leave one gap between data table and total/percentage rows.
     r += 1
 
     if total_row:
-        ws.merge_range(r, 0, r, 1, "JUMLAH PENGUNDI", formats["total_left"])
+        # Bottom total table starts at column B.
+        ws.write(r, 1, "JUMLAH PENGUNDI", formats["total_left"])
 
         for c, col in enumerate(columns[2:], start=2):
             ws.write(r, c, total_row.get(col, ""), formats["total_center"])
@@ -393,8 +397,8 @@ def write_demografik_table(ws, start_row, title, subtitle, rows, name_header, fo
         r += 1
 
     if percent_row:
-        ws.merge_range(r, 0, r, 1, "PERATUSAN", formats["percent_left"])
-
+        # Bottom percentage table starts at column B.
+        ws.write(r, 1, "PERATUSAN", formats["percent_left"])
         ws.write(r, 2, "", formats["percent_center"])
 
         for c, col in enumerate(columns[3:], start=3):
@@ -417,10 +421,11 @@ def write_demografik_xlsx_bytes(raw_df, base_name):
 
         formats = make_formats(workbook)
 
-        sheet.set_column(0, 0, 8)
-        sheet.set_column(1, 1, 20)
-        sheet.set_column(2, 2, 20)
-        sheet.set_column(3, 15, 8)
+        # Column widths
+        sheet.set_column(0, 0, 8)     # A
+        sheet.set_column(1, 1, 20)    # B min, may stretch later
+        sheet.set_column(2, 2, 20)    # C
+        sheet.set_column(3, 15, 9)    # D:P
 
         parl_label = format_parlimen_label(df, base_name)
 
@@ -477,6 +482,7 @@ def write_demografik_xlsx_bytes(raw_df, base_name):
 
             max_b_width = max(max_b_width, section_b_width + 2)
 
+        # Column B: minimum 20, stretches for long DUN/DM names
         sheet.set_column(1, 1, max(20, min(max_b_width, 60)))
 
     output.seek(0)
