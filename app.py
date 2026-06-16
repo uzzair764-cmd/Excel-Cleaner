@@ -20,58 +20,58 @@ st.markdown(
 
     .block-container {
         padding-top: 4rem;
-        max-width: 1100px;
+        max-width: 1300px;
     }
 
     .main-title {
         text-align: center;
-        font-size: 3rem;
-        font-weight: 800;
+        font-size: 3.4rem;
+        font-weight: 850;
         margin-bottom: 0.4rem;
     }
 
     .subtitle {
         text-align: center;
         color: #777;
-        font-size: 1.1rem;
-        margin-bottom: 3rem;
+        font-size: 1.15rem;
+        margin-bottom: 3.5rem;
     }
 
-    .tool-card {
-        height: 300px;
-        border-radius: 28px;
-        border: 1px solid #e8e8e8;
+    div[data-testid="stPageLink"] > a {
+        height: 420px;
+        border-radius: 34px;
+        border: 2px solid #d9d9d9;
         background: #ffffff;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+        box-shadow: 0 14px 40px rgba(0,0,0,0.06);
         display: flex;
         align-items: center;
         justify-content: center;
         text-align: center;
-        font-size: 2rem;
-        font-weight: 800;
+        font-size: 2.7rem;
+        font-weight: 900;
         color: #111;
         text-decoration: none;
         transition: all 0.18s ease-in-out;
     }
 
-    .tool-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 16px 42px rgba(0,0,0,0.11);
-        border-color: #d0d0d0;
+    div[data-testid="stPageLink"] > a:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 22px 56px rgba(0,0,0,0.12);
+        border-color: #bfbfbf;
+        background: #fcfcfc;
         color: #111;
         text-decoration: none;
     }
 
-    .tool-card.disabled {
-        color: #aaa;
-        background: #f8f8f8;
-        cursor: not-allowed;
+    div[data-testid="stPageLink"] p {
+        font-size: 2.7rem;
+        font-weight: 900;
+        letter-spacing: -0.03em;
     }
 
-    .tool-card.disabled:hover {
-        transform: none;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-        border-color: #e8e8e8;
+    div[data-testid="stPageLink"] svg {
+        width: 3rem;
+        height: 3rem;
     }
     </style>
     """,
@@ -101,40 +101,3 @@ with right:
         icon="📞",
         use_container_width=True
     )
-
-st.markdown(
-    """
-    <style>
-    div[data-testid="stPageLink"] > a {
-        height: 300px;
-        border-radius: 28px;
-        border: 1px solid #e8e8e8;
-        background: #ffffff;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        font-size: 2rem;
-        font-weight: 800;
-        color: #111;
-        text-decoration: none;
-        transition: all 0.18s ease-in-out;
-    }
-
-    div[data-testid="stPageLink"] > a:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 16px 42px rgba(0,0,0,0.11);
-        border-color: #d0d0d0;
-        color: #111;
-        text-decoration: none;
-    }
-
-    div[data-testid="stPageLink"] p {
-        font-size: 2rem;
-        font-weight: 800;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
