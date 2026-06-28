@@ -1,305 +1,447 @@
-import os
 import io
+import re
 import pandas as pd
-from openpyxl.styles import Border, PatternFill, Font
+import streamlit as st
+from openpyxl import Workbook
+from openpyxl.styles import Font, Border, Side, PatternFill, Alignment
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
-DRIVE_ROOT = "/content/drive/Shareddrives/SMART TECH TANK - DATA DEPARTMENT/2026"
+st.set_page_config(page_title="Demografik Generator", layout="wide")
 
-MAIN_RACES = ["MELAYU", "CINA", "INDIA", "LAIN-LAIN"]
-DM_EXTRA_RACES = ["MELAYU", "CINA", "INDIA"]
-PARTY_COLS = ["PAS", "PKR", "PPBM", "UMNO"]
-AGE_GROUPS = ["18-24", "25-30", "31-40", "41-50", "51-60", "61+"]
+st.title("DEMOGRAFIK Generator")
 
+uploaded_files = st.file_uploader(
+    "Upload Excel file(s)",
+    type=["xlsx", "xls"],
+    accept_multiple_files=True
+)
 
-def list_dirs(path):
-    try:
-        return sorted([
-            f for f in os.listdir(path)
-            if os.path.isdir(os.path.join(path, f))
-        ])
-    except Exception:
-        return []
+HEADERS = [
+    'KOD DM', 'NAMA DM', 'JUMLAH',
+    'LELAKI', 'LELAKI (%)', 'PEREMPUAN', 'PEREMPUAN (%)',
+    'MELAYU', 'MELAYU (%)', 'CINA', 'CINA (%)', 'INDIA', 'INDIA (%)', 'LAIN-LAIN', 'LAIN-LAIN (%)',
+    '18-24', '18-24 (%)', '25-30', '25-30 (%)', '31-40', '31-40 (%)',
+    '41-50', '41-50 (%)', '51-60', '51-60 (%)', '61+', '61+ (%)',
+    'PAS', 'PAS (%)', 'PKR', 'PKR (%)', 'PPBM', 'PPBM (%)', 'UMNO', 'UMNO (%)',
+    'PUTIH', 'PUTIH (%)', 'KELABU', 'KELABU (%)', 'HITAM', 'HITAM (%)',
+    'PENGUNDI AWAL', 'PENGUNDI AWAL (%)',
+    'POLIS', 'POLIS (%)',
+    'PASANGAN POLIS', 'PASANGAN POLIS (%)',
+    'ASKAR', 'ASKAR (%)',
+    'PASANGAN ASKAR', 'PASANGAN ASKAR (%)'
+]
 
-
-def list_excel_files(path):
-    try:
-        return sorted([
-            f for f in os.listdir(path)
-            if f.lower().endswith((".xlsx", ".xls"))
-            and not f.startswith("~$")
-        ])
-    except Exception:
-        return []
-
-
-def normalise_race(race):
-    r = str(race).strip().upper()
-
-    if r in {"MELAYU", "CINA", "INDIA"}:
-        return r
-
-    return "LAIN-LAIN"
+MAIN_RACES = ['MELAYU', 'CINA', 'INDIA', 'LAIN-LAIN']
+AGE_GROUPS = ['18-24', '25-30', '31-40', '41-50', '51-60', '61+']
+PARTY_COLS = ['PAS', 'PKR', 'PPBM', 'UMNO']
+SIKAP_COLS = ['PUTIH', 'KELABU', 'HITAM']
 
 
-def get_age_group(age):
-    try:
-        a = int(float(age))
-
-        if 18 <= a <= 24:
-            return "18-24"
-        elif 25 <= a <= 30:
-            return "25-30"
-        elif 31 <= a <= 40:
-            return "31-40"
-        elif 41 <= a <= 50:
-            return "41-50"
-        elif 51 <= a <= 60:
-            return "51-60"
-        elif a >= 61:
-            return "61+"
-
-    except Exception:
-        pass
-
+def get_col(df, possible_names):
+    col_map = {c.lower().strip(): c for c in df.columns}
+    for name in possible_names:
+        key = name.lower().strip()
+        if key in col_map:
+            return col_map[key]
     return None
 
 
-def get_age_num(age):
+def clean_service_no(value):
+    n = str(value).strip().upper()
+    return '' if n in {'', 'NAN', 'NONE', 'NULL'} else n
+
+
+def clean_filename(value):
+    name = str(value).strip().upper()
+    name = re.sub(r'[\\/:*?"<>|]', ' ', name)
+    name = ' '.join(name.split())
+    return name if name else 'OUTPUT'
+
+
+def format_kod_dm(value):
+    kod = str(value).strip()
+    if kod in {'', 'None', 'nan', 'NaN'}:
+        return ''
+    kod = kod.split('.')[0].zfill(7)
+    return f"{kod[:3]}/{kod[3:5]}/{kod[5:]}"
+
+
+def normalise_race(value):
+    r = str(value).strip().upper()
+    return r if r in {'MELAYU', 'CINA', 'INDIA'} else 'LAIN-LAIN'
+
+
+def normalise_sikap(value):
+    s = str(value).strip().upper()
+    if s in {'KELABU-LAMA', 'KELABU-BARU'}:
+        return 'KELABU'
+    if s in {'PUTIH', 'KELABU', 'HITAM'}:
+        return s
+    return ''
+
+
+def classify_awal(value):
+    n = clean_service_no(value)
+    if n == '':
+        return ''
+    if n.startswith('G') or n.startswith('RF'):
+        return 'POLIS'
+    if n.startswith('T'):
+        return 'ASKAR'
+    return 'PENGUNDI AWAL'
+
+
+def is_polis(value):
+    n = clean_service_no(value)
+    return n.startswith('G') or n.startswith('RF')
+
+
+def is_askar(value):
+    n = clean_service_no(value)
+    return n.startswith('T')
+
+
+def get_age_group(value):
     try:
-        return int(float(age))
+        a = int(float(value))
+        if 18 <= a <= 24:
+            return '18-24'
+        elif 25 <= a <= 30:
+            return '25-30'
+        elif 31 <= a <= 40:
+            return '31-40'
+        elif 41 <= a <= 50:
+            return '41-50'
+        elif 51 <= a <= 60:
+            return '51-60'
+        elif a >= 61:
+            return '61+'
     except Exception:
-        return None
+        pass
+    return ''
 
 
 def pct(part, total):
-    return round(part / total * 100, 2) if total else 0
+    return round(part / total * 100, 1) if total else 0
 
 
-def build_row(base, grp):
-    total = grp["nokp"].notna().sum()
+def build_dm_row(kod_dm, nama_dm, grp):
+    total = len(grp)
 
-    race_vc = grp["race_norm"].value_counts()
-    age_vc = grp["age_group"].value_counts()
-    sex_vc = grp["jantina"].astype(str).str.strip().str.upper().value_counts()
-    party_vc = grp["party"].astype(str).str.strip().str.upper().value_counts()
+    row = {
+        'KOD DM': format_kod_dm(kod_dm),
+        'NAMA DM': nama_dm,
+        'JUMLAH': total
+    }
 
-    row = {**base, "JUMLAH": total}
+    sex_vc = grp['_jantina'].value_counts()
+    race_vc = grp['_race'].value_counts()
+    age_vc = grp['_age_group'].value_counts()
+    party_vc = grp['_party'].value_counts()
+    sikap_vc = grp['_sikap'].value_counts()
+    awal_vc = grp['_awal_type'].value_counts()
 
-    for s, label in [("L", "LELAKI"), ("P", "PEREMPUAN")]:
-        c = sex_vc.get(s, 0)
+    for key, label in [('L', 'LELAKI'), ('P', 'PEREMPUAN')]:
+        c = sex_vc.get(key, 0)
         row[label] = c
-        row[f"{label} (%)"] = pct(c, total)
+        row[f'{label} (%)'] = pct(c, total)
 
     for r in MAIN_RACES:
         c = race_vc.get(r, 0)
         row[r] = c
-        row[f"{r} (%)"] = pct(c, total)
+        row[f'{r} (%)'] = pct(c, total)
 
     for a in AGE_GROUPS:
         c = age_vc.get(a, 0)
         row[a] = c
-        row[f"{a} (%)"] = pct(c, total)
+        row[f'{a} (%)'] = pct(c, total)
 
     for p in PARTY_COLS:
         c = party_vc.get(p, 0)
         row[p] = c
-        row[f"{p} (%)"] = pct(c, total)
+        row[f'{p} (%)'] = pct(c, total)
+
+    for s in SIKAP_COLS:
+        c = sikap_vc.get(s, 0)
+        row[s] = c
+        row[f'{s} (%)'] = pct(c, total)
+
+    pengundi_awal = grp['_NoPerkhidmatan_clean'].ne('').sum()
+    polis = awal_vc.get('POLIS', 0)
+    askar = awal_vc.get('ASKAR', 0)
+
+    pasangan_polis = grp['_Pasangan Polis'].sum()
+    pasangan_askar = grp['_Pasangan Askar'].sum()
+
+    row['PENGUNDI AWAL'] = pengundi_awal
+    row['PENGUNDI AWAL (%)'] = pct(pengundi_awal, total)
+
+    row['POLIS'] = polis
+    row['POLIS (%)'] = pct(polis, total)
+
+    row['PASANGAN POLIS'] = pasangan_polis
+    row['PASANGAN POLIS (%)'] = pct(pasangan_polis, total)
+
+    row['ASKAR'] = askar
+    row['ASKAR (%)'] = pct(askar, total)
+
+    row['PASANGAN ASKAR'] = pasangan_askar
+    row['PASANGAN ASKAR (%)'] = pct(pasangan_askar, total)
 
     return row
 
 
-def build_dm_row(base, grp):
-    row = build_row(base, grp)
+def add_total_row(df):
+    total = df['JUMLAH'].sum()
+    total_row = {'KOD DM': '', 'NAMA DM': '', 'JUMLAH': total}
 
-    pkr_grp = grp[
-        grp["party"].astype(str).str.strip().str.upper() == "PKR"
-    ]
+    for h in HEADERS:
+        if h in ['KOD DM', 'NAMA DM', 'JUMLAH']:
+            continue
 
-    pkr_total = pkr_grp["nokp"].notna().sum()
-    pkr_race_vc = pkr_grp["race_norm"].value_counts()
-
-    row["PKR TOTAL"] = pkr_total
-
-    for r in DM_EXTRA_RACES:
-        c = pkr_race_vc.get(r, 0)
-        row[f"PKR {r}"] = c
-        row[f"PKR {r} (%)"] = pct(c, pkr_total)
-
-    kelabu_grp = grp[
-        (grp["sikap"].astype(str).str.strip().str.upper().str.contains("KELABU", na=False)) &
-        (grp["umur_num"] > 30)
-    ]
-
-    kelabu_total = kelabu_grp["nokp"].notna().sum()
-    kelabu_race_vc = kelabu_grp["race_norm"].value_counts()
-
-    row["KELABU UMUR >30 TOTAL"] = kelabu_total
-
-    for r in DM_EXTRA_RACES:
-        c = kelabu_race_vc.get(r, 0)
-        row[f"KELABU UMUR >30 {r}"] = c
-        row[f"KELABU UMUR >30 {r} (%)"] = pct(c, kelabu_total)
-
-    return row
-
-
-def add_grand_total(df):
-    if df.empty:
-        return df
-
-    id_cols = [
-        "KOD PARLIMEN",
-        "NAMA PARLIMEN",
-        "KOD DUN",
-        "NAMA DUN",
-        "KOD DM",
-        "NAMA DM",
-    ]
-
-    count_cols = [
-        c for c in df.columns
-        if c not in id_cols and "(%)" not in c
-    ]
-
-    pct_cols = [c for c in df.columns if "(%)" in c]
-
-    gt = df[count_cols].apply(pd.to_numeric, errors="coerce").fillna(0).sum()
-    grand = gt.to_dict()
-
-    for p in pct_cols:
-        base_col = p.replace(" (%)", "")
-
-        if base_col.startswith("PKR "):
-            total_col = "PKR TOTAL"
-        elif base_col.startswith("KELABU UMUR >30 "):
-            total_col = "KELABU UMUR >30 TOTAL"
+        if h.endswith('(%)'):
+            base = h.replace(' (%)', '')
+            total_row[h] = pct(total_row.get(base, 0), total)
         else:
-            total_col = "JUMLAH"
+            total_row[h] = pd.to_numeric(df[h], errors='coerce').fillna(0).sum()
 
-        grand[p] = pct(gt.get(base_col, 0), gt.get(total_col, 0))
-
-    grand.update({
-        "KOD PARLIMEN": "",
-        "NAMA PARLIMEN": "GRAND TOTAL",
-        "KOD DUN": "",
-        "NAMA DUN": "",
-        "KOD DM": "",
-        "NAMA DM": "",
-    })
-
-    return pd.concat([df, pd.DataFrame([grand])], ignore_index=True)
+    return pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
 
 
-def process_stats_file(file_obj):
-    df = pd.read_excel(file_obj, dtype=str)
-    df.columns = [c.strip().lower() for c in df.columns]
+def generate_demografik(uploaded_files):
+    all_data = []
+    nama_dun_values = []
+    logs = []
 
-    required_cols = [
-        "nokp",
-        "umur",
-        "jantina",
-        "kategori_kaum",
-        "party",
-        "sikap",
-        "kod_parlimen",
-        "nama_parlimen",
-        "kod_dun",
-        "nama_dun",
-        "kod_dm",
-        "nama_dm",
-    ]
+    for uploaded_file in uploaded_files:
+        fname = uploaded_file.name
 
-    missing = [c for c in required_cols if c not in df.columns]
+        try:
+            df = pd.read_excel(uploaded_file, dtype=str)
+            df.columns = [c.strip() for c in df.columns]
 
-    if missing:
-        raise ValueError(f"Missing columns: {missing}")
+            col_dm = get_col(df, ['KOD DM', 'kod_dm'])
+            col_nama_dm = get_col(df, ['NamaDM', 'nama_dm', 'NAMA DM'])
+            col_nama_dun = get_col(df, ['nama_dun', 'DUN', 'NAMA DUN'])
+            col_jantina = get_col(df, ['JANTINA', 'jantina'])
+            col_bangsa = get_col(df, ['BANGSA', 'kategori_kaum'])
+            col_umur = get_col(df, ['UMUR', 'umur'])
+            col_party = get_col(df, ['party', 'PARTY'])
+            col_sikap = get_col(df, ['CATATAN', 'sikap'])
+            col_no = get_col(df, ['NoPerkhidmatan', 'noperkhidmatan'])
+            col_pasangan = get_col(df, ['NoKPPasangan', 'NoPerkhidmatanPasangan', 'noperkhidmatanpasangan'])
 
-    df["age_group"] = df["umur"].apply(get_age_group)
-    df["umur_num"] = df["umur"].apply(get_age_num)
-    df["race_norm"] = df["kategori_kaum"].apply(normalise_race)
+            required = {
+                'KOD DM': col_dm,
+                'NamaDM': col_nama_dm,
+                'nama_dun / DUN': col_nama_dun,
+                'JANTINA': col_jantina,
+                'BANGSA': col_bangsa,
+                'UMUR': col_umur,
+                'NoPerkhidmatan': col_no,
+                'NoKPPasangan': col_pasangan
+            }
 
-    parl_rows = []
-    dun_rows = []
-    dm_rows = []
+            missing = [k for k, v in required.items() if v is None]
+            if missing:
+                logs.append(f"Skipped {fname} — missing columns: {missing}")
+                continue
 
-    for (kod_p, nama_p), grp in df.groupby(
-        ["kod_parlimen", "nama_parlimen"],
-        dropna=False
-    ):
-        parl_rows.append(build_row({
-            "KOD PARLIMEN": kod_p,
-            "NAMA PARLIMEN": nama_p,
-            "KOD DUN": "-",
-            "NAMA DUN": "(PARLIMEN TOTAL)",
-            "KOD DM": "-",
-            "NAMA DM": "-",
-        }, grp))
+            dun_series = df[col_nama_dun].fillna('').astype(str).str.strip()
+            nama_dun_values.extend([x for x in dun_series.unique() if x])
 
-    for (kod_p, nama_p, kod_d, nama_d), grp in df.groupby(
-        ["kod_parlimen", "nama_parlimen", "kod_dun", "nama_dun"],
-        dropna=False
-    ):
-        dun_rows.append(build_row({
-            "KOD PARLIMEN": kod_p,
-            "NAMA PARLIMEN": nama_p,
-            "KOD DUN": kod_d,
-            "NAMA DUN": nama_d,
-            "KOD DM": "-",
-            "NAMA DM": "(DUN TOTAL)",
-        }, grp))
+            df['_KOD DM'] = df[col_dm].fillna('').astype(str).str.strip()
+            df['_NAMA DM'] = df[col_nama_dm].fillna('').astype(str).str.strip()
+            df['_jantina'] = df[col_jantina].fillna('').astype(str).str.strip().str.upper()
+            df['_race'] = df[col_bangsa].apply(normalise_race)
+            df['_age_group'] = df[col_umur].apply(get_age_group)
 
-    for (kod_p, nama_p, kod_d, nama_d, kod_dm, nama_dm), grp in df.groupby(
-        ["kod_parlimen", "nama_parlimen", "kod_dun", "nama_dun", "kod_dm", "nama_dm"],
-        dropna=False
-    ):
-        dm_rows.append(build_dm_row({
-            "KOD PARLIMEN": kod_p,
-            "NAMA PARLIMEN": nama_p,
-            "KOD DUN": kod_d,
-            "NAMA DUN": nama_d,
-            "KOD DM": kod_dm,
-            "NAMA DM": nama_dm,
-        }, grp))
+            df['_party'] = df[col_party].fillna('').astype(str).str.strip().str.upper() if col_party else ''
+            df['_sikap'] = df[col_sikap].apply(normalise_sikap) if col_sikap else ''
 
-    df_parl = add_grand_total(pd.DataFrame(parl_rows))
-    df_dun = add_grand_total(pd.DataFrame(dun_rows))
-    df_dm = add_grand_total(pd.DataFrame(dm_rows))
+            df['_NoPerkhidmatan_clean'] = df[col_no].apply(clean_service_no)
+            df['_NoKPPasangan_clean'] = df[col_pasangan].apply(clean_service_no)
 
-    return df_parl, df_dun, df_dm
+            df['_awal_type'] = df['_NoPerkhidmatan_clean'].apply(classify_awal)
+            df['_Pasangan Polis'] = df['_NoKPPasangan_clean'].apply(lambda x: 1 if is_polis(x) else 0)
+            df['_Pasangan Askar'] = df['_NoKPPasangan_clean'].apply(lambda x: 1 if is_askar(x) else 0)
 
+            all_data.append(df)
+            logs.append(f"Loaded {fname}: {len(df):,} rows")
 
-def make_excel_bytes(df_parl, df_dun, df_dm):
+        except Exception as e:
+            logs.append(f"Error reading {fname}: {e}")
+
+    if not all_data:
+        raise ValueError("No valid data loaded.\n" + "\n".join(logs))
+
+    final_df = pd.concat(all_data, ignore_index=True)
+
+    rows = []
+    for (kod_dm, nama_dm), grp in final_df.groupby(['_KOD DM', '_NAMA DM'], dropna=False):
+        rows.append(build_dm_row(kod_dm, nama_dm, grp))
+
+    rumusan_df = pd.DataFrame(rows)
+
+    for h in HEADERS:
+        if h not in rumusan_df.columns:
+            rumusan_df[h] = 0
+
+    rumusan_df = rumusan_df[HEADERS]
+    rumusan_df = rumusan_df.sort_values(by='KOD DM', kind='stable')
+    rumusan_df = add_total_row(rumusan_df)
+
     output = io.BytesIO()
 
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df_parl.to_excel(writer, index=False, sheet_name="BY PARLIMEN")
-        df_dun.to_excel(writer, index=False, sheet_name="BY DUN")
-        df_dm.to_excel(writer, index=False, sheet_name="BY DM")
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'DEMO'
 
-        for sheet in ["BY PARLIMEN", "BY DUN", "BY DM"]:
-            ws = writer.sheets[sheet]
-            header = [cell.value for cell in ws[1]]
+    BLUE = '9DC3E6'
+    GREEN = 'A9D18E'
+    ORANGE = 'F4B183'
+    YELLOW = 'FFD966'
+    PURPLE = 'B4A7D6'
+    WHITE = 'D9D9D9'
 
-            for col in ws.columns:
-                max_len = max(
-                    (len(str(cell.value or "")) for cell in col),
-                    default=10
-                )
-                ws.column_dimensions[col[0].column_letter].width = max_len + 4
+    thin = Side(style='thin', color='000000')
+    medium = Side(style='medium', color='000000')
 
-            for row in ws.iter_rows():
-                for cell in row:
-                    cell.font = Font(bold=False)
-                    cell.border = Border()
-                    cell.fill = PatternFill(fill_type=None)
+    group_fill = {}
+    for c in range(4, 8):
+        group_fill[c] = BLUE
+    for c in range(8, 16):
+        group_fill[c] = GREEN
+    for c in range(16, 28):
+        group_fill[c] = ORANGE
+    for c in range(28, 36):
+        group_fill[c] = YELLOW
+    for c in range(36, 42):
+        group_fill[c] = WHITE
+    for c in range(42, 52):
+        group_fill[c] = PURPLE
 
-                    col_name = header[cell.column - 1] if cell.column <= len(header) else ""
+    group_left_edges = {1, 4, 8, 16, 28, 36, 42, 44, 46, 48, 50}
+    group_right_edges = {2, 7, 15, 27, 35, 41, 43, 45, 47, 49, 51}
+    thin_right_edges = {5, 9, 11, 13, 17, 19, 21, 23, 25, 29, 31, 33, 37, 39}
+    thin_left_edges = {10, 12, 14, 18, 20, 22, 24, 26, 30, 32, 34, 38, 40}
 
-                    if isinstance(cell.value, (int, float)):
-                        if "(%)" in str(col_name):
-                            cell.number_format = '0.00"%"'
-                        else:
-                            cell.number_format = "#,##0"
+    for col_idx, h in enumerate(HEADERS, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=h)
+        cell.font = Font(name='Calibri', size=11, bold=True)
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
+        if col_idx in group_fill:
+            cell.fill = PatternFill('solid', fgColor=group_fill[col_idx])
+
+        left = medium if col_idx in group_left_edges else (thin if col_idx in thin_left_edges else thin)
+        right = medium if col_idx in group_right_edges else (thin if col_idx in thin_right_edges else thin)
+
+        cell.border = Border(left=left, right=right, top=medium, bottom=medium)
+
+    for r_idx, row in enumerate(rumusan_df.itertuples(index=False), start=2):
+        is_total = r_idx == len(rumusan_df) + 1
+
+        for c_idx, value in enumerate(row, start=1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=value)
+
+            if c_idx == 2:
+                cell.alignment = Alignment(horizontal='left', vertical='center')
+            else:
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+
+            cell.font = Font(name='Calibri', size=11, bold=is_total)
+
+            if c_idx in group_fill and is_total:
+                cell.fill = PatternFill('solid', fgColor=group_fill[c_idx])
+
+            left = medium if c_idx in group_left_edges else (thin if c_idx in thin_left_edges else thin)
+            right = medium if c_idx in group_right_edges else (thin if c_idx in thin_right_edges else thin)
+
+            cell.border = Border(
+                left=left,
+                right=right,
+                top=medium if is_total else thin,
+                bottom=medium if is_total else thin
+            )
+
+            col_name = HEADERS[c_idx - 1]
+
+            if isinstance(value, (int, float)):
+                if '(%)' in col_name:
+                    cell.number_format = '0.0'
+                else:
+                    cell.number_format = '#,##0'
+
+    widths = {
+        'A': 13, 'B': 25, 'C': 13,
+        'D': 11.3, 'E': 14.7, 'F': 17, 'G': 20.6,
+        'H': 13.1, 'I': 16.6, 'J': 10, 'K': 13.4, 'L': 10.7, 'M': 14.1, 'N': 14.6, 'O': 18.1,
+        'P': 10.3, 'Q': 13.7, 'R': 10.3, 'S': 13.7, 'T': 10.3, 'U': 13.7,
+        'V': 10.3, 'W': 13.7, 'X': 10.3, 'Y': 13.7, 'Z': 8.6, 'AA': 12,
+        'AB': 9, 'AC': 12.4, 'AD': 9, 'AE': 12.4, 'AF': 10.9, 'AG': 14.3, 'AH': 11.7, 'AI': 15.1,
+        'AJ': 11, 'AK': 14.4, 'AL': 12.4, 'AM': 15.9, 'AN': 11.6, 'AO': 15,
+        'AP': 21.3, 'AQ': 24.9, 'AR': 10.6, 'AS': 14, 'AT': 21.4, 'AU': 25,
+        'AV': 11.4, 'AW': 14.9, 'AX': 22.4, 'AY': 26
+    }
+
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+
+    max_len = 0
+    for row in range(1, ws.max_row + 1):
+        value = ws.cell(row=row, column=2).value
+        max_len = max(max_len, len(str(value or '')))
+    ws.column_dimensions['B'].width = min(max_len + 4, 60)
+
+    for row in range(2, ws.max_row + 1):
+        ws.cell(row=row, column=2).alignment = Alignment(horizontal='left', vertical='center')
+
+    ws.row_dimensions[1].height = 15.75
+    ws.freeze_panes = 'A2'
+
+    end_row = len(rumusan_df) + 1
+    table_ref = f"A1:AY{end_row}"
+
+    tab = Table(displayName="Table2", ref=table_ref)
+    style = TableStyleInfo(
+        name="TableStyleLight1",
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=False,
+        showColumnStripes=False
+    )
+    tab.tableStyleInfo = style
+    ws.add_table(tab)
+
+    nama_dun = clean_filename(nama_dun_values[0]) if nama_dun_values else 'OUTPUT'
+    out_name = f"DEMOGRAFIK {nama_dun}.xlsx"
+
+    wb.save(output)
     output.seek(0)
-    return output.getvalue()
+
+    return output.getvalue(), out_name, logs
+
+
+if uploaded_files:
+    if st.button("Generate DEMOGRAFIK"):
+        try:
+            excel_bytes, out_name, logs = generate_demografik(uploaded_files)
+
+            st.success(f"Generated: {out_name}")
+
+            with st.expander("Processing log"):
+                for log in logs:
+                    st.write(log)
+
+            st.download_button(
+                label="Download Excel",
+                data=excel_bytes,
+                file_name=out_name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        except Exception as e:
+            st.error(str(e))
+else:
+    st.info("Upload one or more Excel files to start.")
