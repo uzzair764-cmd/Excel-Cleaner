@@ -124,6 +124,7 @@ def get_structure_options(input_level):
             "DUN > KAUM": "DUN_KAUM",
             "DUN > AGE RANGE": "DUN_AGE",
             "DUN > DM > ML/MP/...": "DUN_DM_CODE",
+            "COMBINE ALL INPUT FILES > ONE XLSX": "COMBINE_ALL",
         }
 
     return {
@@ -134,6 +135,7 @@ def get_structure_options(input_level):
         "PARLIMEN > DUN > AGE RANGE": "PARLIMEN_DUN_AGE",
         "PARLIMEN > DUN > DM > ML/MP/...": "PARLIMEN_DUN_DM_CODE",
         "PARLIMEN > PARLIMEN.xlsx": "PARLIMEN_FILE",
+        "COMBINE ALL INPUT FILES > ONE XLSX": "COMBINE_ALL",
     }
 
 
@@ -141,7 +143,11 @@ def map_structure_to_config(structure_code):
     force_split_by_kaum = False
     force_split_by_code = False
 
-    if structure_code == "DUN_DM_FILE":
+    if structure_code == "COMBINE_ALL":
+        group_levels = []
+        last_group_as_folder = False
+
+    elif structure_code == "DUN_DM_FILE":
         group_levels = ["DUN", "DM"]
         last_group_as_folder = False
 
@@ -297,17 +303,21 @@ def get_preview_age_labels(age_ranges):
 def build_folder_preview(input_level, structure_code, age_ranges):
     age_labels = get_preview_age_labels(age_ranges)
 
+    if structure_code == "COMBINE_ALL":
+        return """voter_outputs/
+└── OUTPUT.xlsx"""
+
     if input_level == "DUN":
         if structure_code == "DUN_DM_FILE":
             return """voter_outputs/
-└── N01 NAMA_DUN/
+└── N.01 DUN_NAME/
     ├── DM01 NAMA_DM.xlsx
     ├── DM02 NAMA_DM.xlsx
     └── DM03 NAMA_DM.xlsx"""
 
         if structure_code == "DUN_DM_KAUM":
             return """voter_outputs/
-└── N01 NAMA_DUN/
+└── N.01 DUN_NAME/
     └── DM01 NAMA_DM/
         ├── DM01 NAMA_DM MELAYU.xlsx
         ├── DM01 NAMA_DM CINA.xlsx
@@ -316,19 +326,20 @@ def build_folder_preview(input_level, structure_code, age_ranges):
 
         if structure_code == "DUN_FILE":
             return """voter_outputs/
-└── N01 NAMA_DUN/
-    └── N01 NAMA_DUN.xlsx"""
+├── N.01 DUN_NAME.xlsx
+├── N.02 DUN_NAME.xlsx
+└── N.03 DUN_NAME.xlsx"""
 
         if structure_code == "DUN_KAUM":
             return """voter_outputs/
-└── N01 NAMA_DUN/
-    ├── N01 NAMA_DUN MELAYU.xlsx
-    ├── N01 NAMA_DUN CINA.xlsx
-    ├── N01 NAMA_DUN INDIA.xlsx
-    └── N01 NAMA_DUN LAIN-LAIN.xlsx"""
+└── N.01 DUN_NAME/
+    ├── N.01 DUN_NAME MELAYU.xlsx
+    ├── N.01 DUN_NAME CINA.xlsx
+    ├── N.01 DUN_NAME INDIA.xlsx
+    └── N.01 DUN_NAME LAIN-LAIN.xlsx"""
 
         if structure_code == "DUN_AGE":
-            lines = ["voter_outputs/", "└── N01 NAMA_DUN/"]
+            lines = ["voter_outputs/", "└── N.01 DUN_NAME/"]
             for i, age in enumerate(age_labels):
                 prefix = "    └──" if i == len(age_labels) - 1 else "    ├──"
                 lines.append(f"{prefix} {age}.xlsx")
@@ -336,7 +347,7 @@ def build_folder_preview(input_level, structure_code, age_ranges):
 
         if structure_code == "DUN_DM_CODE":
             return """voter_outputs/
-└── N01 NAMA_DUN/
+└── N.01 DUN_NAME/
     └── DM01 NAMA_DM/
         ├── DM01 NAMA_DM ML.xlsx
         ├── DM01 NAMA_DM MP.xlsx
@@ -347,14 +358,14 @@ def build_folder_preview(input_level, structure_code, age_ranges):
         if structure_code == "PARLIMEN_DUN_DM_FILE":
             return """voter_outputs/
 └── P001 PARLIMEN_NAME/
-    └── N01 NAMA_DUN/
+    └── N.01 DUN_NAME/
         ├── DM01 NAMA_DM.xlsx
         └── DM02 NAMA_DM.xlsx"""
 
         if structure_code == "PARLIMEN_DUN_DM_KAUM":
             return """voter_outputs/
 └── P001 PARLIMEN_NAME/
-    └── N01 NAMA_DUN/
+    └── N.01 DUN_NAME/
         └── DM01 NAMA_DM/
             ├── DM01 NAMA_DM MELAYU.xlsx
             ├── DM01 NAMA_DM CINA.xlsx
@@ -363,19 +374,19 @@ def build_folder_preview(input_level, structure_code, age_ranges):
         if structure_code == "PARLIMEN_DUN_FILE":
             return """voter_outputs/
 └── P001 PARLIMEN_NAME/
-    ├── N01 NAMA_DUN.xlsx
-    └── N02 NAMA_DUN.xlsx"""
+    ├── N.01 DUN_NAME.xlsx
+    └── N.02 DUN_NAME.xlsx"""
 
         if structure_code == "PARLIMEN_DUN_KAUM":
             return """voter_outputs/
 └── P001 PARLIMEN_NAME/
-    └── N01 NAMA_DUN/
-        ├── N01 NAMA_DUN MELAYU.xlsx
-        ├── N01 NAMA_DUN CINA.xlsx
-        └── N01 NAMA_DUN LAIN-LAIN.xlsx"""
+    └── N.01 DUN_NAME/
+        ├── N.01 DUN_NAME MELAYU.xlsx
+        ├── N.01 DUN_NAME CINA.xlsx
+        └── N.01 DUN_NAME LAIN-LAIN.xlsx"""
 
         if structure_code == "PARLIMEN_DUN_AGE":
-            lines = ["voter_outputs/", "└── P001 PARLIMEN_NAME/", "    └── N01 NAMA_DUN/"]
+            lines = ["voter_outputs/", "└── P001 PARLIMEN_NAME/", "    └── N.01 DUN_NAME/"]
             for i, age in enumerate(age_labels):
                 prefix = "        └──" if i == len(age_labels) - 1 else "        ├──"
                 lines.append(f"{prefix} {age}.xlsx")
@@ -384,7 +395,7 @@ def build_folder_preview(input_level, structure_code, age_ranges):
         if structure_code == "PARLIMEN_DUN_DM_CODE":
             return """voter_outputs/
 └── P001 PARLIMEN_NAME/
-    └── N01 NAMA_DUN/
+    └── N.01 DUN_NAME/
         └── DM01 NAMA_DM/
             ├── DM01 NAMA_DM ML.xlsx
             ├── DM01 NAMA_DM MP.xlsx
@@ -392,8 +403,9 @@ def build_folder_preview(input_level, structure_code, age_ranges):
 
         if structure_code == "PARLIMEN_FILE":
             return """voter_outputs/
-└── P001 PARLIMEN_NAME/
-    └── P001 PARLIMEN_NAME.xlsx"""
+├── P001 PARLIMEN_NAME.xlsx
+├── P002 PARLIMEN_NAME.xlsx
+└── P003 PARLIMEN_NAME.xlsx"""
 
     return "voter_outputs/"
 
@@ -456,15 +468,7 @@ with st.sidebar:
 
     kaum_filter = st.selectbox(
         "Kaum Filter",
-        [
-            "ALL",
-            "MCI",
-            "MELAYU",
-            "CINA",
-            "INDIA",
-            "LAIN-LAIN",
-            "CUSTOM",
-        ],
+        ["ALL", "MCI", "MELAYU", "CINA", "INDIA", "LAIN-LAIN", "CUSTOM"],
         format_func=lambda x: {
             "ALL": "MELAYU, CINA, INDIA, LAIN-LAIN",
             "MCI": "MELAYU, CINA, INDIA",
@@ -489,15 +493,7 @@ with st.sidebar:
 
     sikap_filter = st.selectbox(
         "Sikap Filter",
-        [
-            "NONE",
-            "HITAM",
-            "KELABU",
-            "PUTIH",
-            "HITAM_KELABU",
-            "KELABU_PUTIH",
-            "CUSTOM",
-        ],
+        ["NONE", "HITAM", "KELABU", "PUTIH", "HITAM_KELABU", "KELABU_PUTIH", "CUSTOM"],
         format_func=lambda x: {
             "NONE": "NO FILTER",
             "HITAM": "HITAM only",
@@ -505,7 +501,7 @@ with st.sidebar:
             "PUTIH": "PUTIH only",
             "HITAM_KELABU": "HITAM + KELABU",
             "KELABU_PUTIH": "KELABU + PUTIH",
-            "CUSTOM": "CUSTOM",
+            "CUSTOM": "Custom sikap filter",
         }[x],
         index=0,
         key="sikap_filter"
@@ -521,7 +517,7 @@ with st.sidebar:
         custom_sikap = ""
 
     party_filter_selected = st.selectbox(
-        "Party Filter",
+        "Party / Parti Filter",
         ["NO FILTER", "PAS", "PKR", "PPBM", "UMNO"],
         index=0,
         key="party_filter_selected"
@@ -722,6 +718,7 @@ if run_button:
             st.session_state["summary_text"] = result["summary_text"]
             st.session_state["final_rows"] = result["final_rows"]
             st.session_state["files_created"] = result["files_created"]
+            st.session_state["zip_file_name"] = os.path.basename(result["zip_path"])
 
             status_box.empty()
             st.success("Done.")
@@ -748,7 +745,7 @@ if "zip_bytes" in st.session_state:
     st.download_button(
         label="Download ZIP",
         data=st.session_state["zip_bytes"],
-        file_name="voter_outputs.zip",
+        file_name=st.session_state.get("zip_file_name", "voter_outputs.zip"),
         mime="application/zip",
         type="primary",
         use_container_width=True
