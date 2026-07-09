@@ -368,6 +368,10 @@ def format_first_name(row):
 
 
 def build_wa_df(group):
+    """
+    Standard WA-format output:
+    Title | First Name | Middle Name | Last Name | Mobile Phone
+    """
     return pd.DataFrame({
         "Title": group["number"].astype(str),
         "First Name": group["First Name"].astype(str),
@@ -375,6 +379,28 @@ def build_wa_df(group):
         "Last Name": group["Last Name"].astype(str),
         "Mobile Phone": group["number"].astype(str),
     })
+
+
+def build_one_way_blast_df(group):
+    """
+    One Way Blast output:
+    Only a single "Title" column, containing the phone number
+    prefixed with "6" (e.g. 0108266239 -> 60108266239).
+    """
+    return pd.DataFrame({
+        "Title": ("6" + group["number"].astype(str)),
+    })
+
+
+def build_output_df(group, one_way_blast=False):
+    """
+    Dispatcher: picks the correct output format depending on
+    whether "One Way Blast" mode is ticked on.
+    """
+    if one_way_blast:
+        return build_one_way_blast_df(group)
+
+    return build_wa_df(group)
 
 
 # ============================================================
@@ -770,6 +796,11 @@ def run_export(file_paths, config, progress_callback=None):
     read_all_sheets = config["read_all_sheets"]
     create_empty_files = config["create_empty_files"]
 
+    # NEW: "One Way Blast" tickbox.
+    # When True, output files only contain a single "Title" column
+    # with the phone number prefixed with "6" (e.g. 60108266239).
+    one_way_blast = config.get("one_way_blast", False)
+
     if custom_age_ranges:
         ACTIVE_AGE_RANGES = custom_age_ranges
     else:
@@ -975,7 +1006,7 @@ def run_export(file_paths, config, progress_callback=None):
                 if split_group.empty and not create_empty_files:
                     continue
 
-                export_df = build_wa_df(split_group)
+                export_df = build_output_df(split_group, one_way_blast)
 
                 out_file = f"{safe_file_label(split_value)}.xlsx"
                 out_path = os.path.join(base_folder, out_file)
@@ -986,7 +1017,7 @@ def run_export(file_paths, config, progress_callback=None):
                 output_lines.append(f"{safe_file_label(split_value)} = {format_count(len(split_group))}")
 
         else:
-            export_df = build_wa_df(df)
+            export_df = build_output_df(df, one_way_blast)
 
             out_file = "OUTPUT.xlsx"
             out_path = os.path.join(base_folder, out_file)
@@ -1042,7 +1073,7 @@ def run_export(file_paths, config, progress_callback=None):
                         continue
 
                     split_label = safe_file_label(split_value)
-                    export_df = build_wa_df(split_group)
+                    export_df = build_output_df(split_group, one_way_blast)
 
                     out_file = f"{file_base} {split_label}.xlsx"
                     out_file = sanitize(out_file)
@@ -1057,7 +1088,7 @@ def run_export(file_paths, config, progress_callback=None):
                 if group.empty and not create_empty_files:
                     continue
 
-                export_df = build_wa_df(group)
+                export_df = build_output_df(group, one_way_blast)
 
                 out_file = f"{file_base}.xlsx"
                 out_file = sanitize(out_file)
@@ -1094,6 +1125,7 @@ def run_export(file_paths, config, progress_callback=None):
         f"SIKAP = {sikap_filter if sikap_filter else 'NO FILTER'}",
         f"PARTY = {party_filter if party_filter else 'NO FILTER'}",
         f"AGE GROUPS = {custom_age_ranges if custom_age_ranges else 'NO FILTER'}",
+        f"ONE WAY BLAST = {'YES' if one_way_blast else 'NO'}",
         "",
         "CLEANING",
         f"VALID PHONE ROWS = {format_count(after_phone)}",
