@@ -53,6 +53,7 @@ if st.session_state.get("RESET_FILTERS_NOW", False):
         "custom_sikap",
         "party_filter_selected",
         "print_full_summary",
+        "one_way_blast",
         "age_groups",
         "zip_bytes",
         "summary_text",
@@ -525,6 +526,14 @@ with st.sidebar:
 
     st.divider()
 
+    one_way_blast = st.checkbox(
+        "One Way Blast (Title column only, number prefixed with 6)",
+        value=False,
+        key="one_way_blast"
+    )
+
+    st.divider()
+
     st.write("Age Groups")
 
     if st.button("➕ Add age group", use_container_width=True):
@@ -690,6 +699,7 @@ if run_button:
             "dedup_by_nokp": False,
             "read_all_sheets": False,
             "create_empty_files": False,
+            "one_way_blast": one_way_blast,
         }
 
         progress_bar = st.progress(0)
