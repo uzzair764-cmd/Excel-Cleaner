@@ -402,7 +402,7 @@ def generate_demografik(uploaded_files):
             col_kod_dun = get_col(df, ['kod_dun', 'KOD DUN', 'KODDUN'])
             col_nama_dun = get_col(df, ['nama_dun', 'DUN', 'NAMA DUN'])
             col_jantina = get_col(df, ['JANTINA', 'jantina'])
-            col_bangsa = get_col(df, ['BANGSA', 'kategori_kaum', 'KAUM'])
+            col_bangsa = get_col(df, ['kaum', 'BANGSA', 'kategori_kaum'])
             col_umur = get_col(df, ['UMUR', 'umur'])
             col_party = get_col(df, ['party', 'PARTY'])
             col_sikap = get_col(df, ['CATATAN', 'sikap'])
