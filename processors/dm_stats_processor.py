@@ -58,6 +58,27 @@ def clean_filename(value):
     return name if name else 'OUTPUT'
 
 
+def clean_sheet_name(value, existing_names):
+    """Sanitize a worksheet name (Excel: max 31 chars, no \\/?*[]:), and
+    make sure it's unique within the workbook."""
+    name = str(value).strip().upper()
+    name = re.sub(r'[\\/?*\[\]:]', ' ', name)
+    name = ' '.join(name.split())
+    if not name:
+        name = 'DUN'
+    name = name[:31]
+
+    base = name
+    counter = 2
+    while name in existing_names:
+        suffix = f" ({counter})"
+        name = base[:31 - len(suffix)] + suffix
+        counter += 1
+
+    existing_names.add(name)
+    return name
+
+
 def format_kod_dm(value):
     kod = str(value).strip()
     if kod in {'', 'None', 'nan', 'NaN'}:
@@ -208,77 +229,10 @@ def add_total_row(df):
     return pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
 
 
-def generate_demografik(uploaded_files):
-    all_data = []
-    nama_dun_values = []
-    logs = []
-
-    for uploaded_file in uploaded_files:
-        fname = uploaded_file.name
-
-        try:
-            df = pd.read_excel(uploaded_file, dtype=str)
-            df.columns = [c.strip() for c in df.columns]
-
-            col_dm = get_col(df, ['KOD DM', 'kod_dm'])
-            col_nama_dm = get_col(df, ['NamaDM', 'nama_dm', 'NAMA DM'])
-            col_nama_dun = get_col(df, ['nama_dun', 'DUN', 'NAMA DUN'])
-            col_jantina = get_col(df, ['JANTINA', 'jantina'])
-            col_bangsa = get_col(df, ['BANGSA', 'kategori_kaum'])
-            col_umur = get_col(df, ['UMUR', 'umur'])
-            col_party = get_col(df, ['party', 'PARTY'])
-            col_sikap = get_col(df, ['CATATAN', 'sikap'])
-            col_no = get_col(df, ['NoPerkhidmatan', 'noperkhidmatan'])
-            col_pasangan = get_col(df, ['NoKPPasangan', 'NoPerkhidmatanPasangan', 'noperkhidmatanpasangan'])
-
-            required = {
-                'KOD DM': col_dm,
-                'NamaDM': col_nama_dm,
-                'nama_dun / DUN': col_nama_dun,
-                'JANTINA': col_jantina,
-                'BANGSA': col_bangsa,
-                'UMUR': col_umur,
-                'NoPerkhidmatan': col_no,
-                'NoKPPasangan': col_pasangan
-            }
-
-            missing = [k for k, v in required.items() if v is None]
-            if missing:
-                logs.append(f"Skipped {fname} — missing columns: {missing}")
-                continue
-
-            dun_series = df[col_nama_dun].fillna('').astype(str).str.strip()
-            nama_dun_values.extend([x for x in dun_series.unique() if x])
-
-            df['_KOD DM'] = df[col_dm].fillna('').astype(str).str.strip()
-            df['_NAMA DM'] = df[col_nama_dm].fillna('').astype(str).str.strip()
-            df['_jantina'] = df[col_jantina].fillna('').astype(str).str.strip().str.upper()
-            df['_race'] = df[col_bangsa].apply(normalise_race)
-            df['_age_group'] = df[col_umur].apply(get_age_group)
-
-            df['_party'] = df[col_party].fillna('').astype(str).str.strip().str.upper() if col_party else ''
-            df['_sikap'] = df[col_sikap].apply(normalise_sikap) if col_sikap else ''
-
-            df['_NoPerkhidmatan_clean'] = df[col_no].apply(clean_service_no)
-            df['_NoKPPasangan_clean'] = df[col_pasangan].apply(clean_service_no)
-
-            df['_awal_type'] = df['_NoPerkhidmatan_clean'].apply(classify_awal)
-            df['_Pasangan Polis'] = df['_NoKPPasangan_clean'].apply(lambda x: 1 if is_polis(x) else 0)
-            df['_Pasangan Askar'] = df['_NoKPPasangan_clean'].apply(lambda x: 1 if is_askar(x) else 0)
-
-            all_data.append(df)
-            logs.append(f"Loaded {fname}: {len(df):,} rows")
-
-        except Exception as e:
-            logs.append(f"Error reading {fname}: {e}")
-
-    if not all_data:
-        raise ValueError("No valid data loaded.\n" + "\n".join(logs))
-
-    final_df = pd.concat(all_data, ignore_index=True)
-
+def build_rumusan_df(dun_df):
+    """Build the summary (one row per DM) table for a single DUN's data."""
     rows = []
-    for (kod_dm, nama_dm), grp in final_df.groupby(['_KOD DM', '_NAMA DM'], dropna=False):
+    for (kod_dm, nama_dm), grp in dun_df.groupby(['_KOD DM', '_NAMA DM'], dropna=False):
         rows.append(build_dm_row(kod_dm, nama_dm, grp))
 
     rumusan_df = pd.DataFrame(rows)
@@ -290,13 +244,11 @@ def generate_demografik(uploaded_files):
     rumusan_df = rumusan_df[HEADERS]
     rumusan_df = rumusan_df.sort_values(by='KOD DM', kind='stable')
     rumusan_df = add_total_row(rumusan_df)
+    return rumusan_df
 
-    output = io.BytesIO()
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'DEMO'
-
+def write_dun_sheet(ws, rumusan_df):
+    """Write and style a single DUN's rumusan_df onto the given worksheet."""
     BLUE = '9DC3E6'
     GREEN = 'A9D18E'
     ORANGE = 'F4B183'
@@ -403,7 +355,8 @@ def generate_demografik(uploaded_files):
     end_row = len(rumusan_df) + 1
     table_ref = f"A1:AY{end_row}"
 
-    tab = Table(displayName="Table2", ref=table_ref)
+    # Table display names must also be unique within the workbook.
+    tab = Table(displayName=f"Table_{ws.title.replace(' ', '_')[:20]}_{ws.parent.index(ws)}", ref=table_ref)
     style = TableStyleInfo(
         name="TableStyleLight1",
         showFirstColumn=False,
@@ -414,11 +367,102 @@ def generate_demografik(uploaded_files):
     tab.tableStyleInfo = style
     ws.add_table(tab)
 
-    nama_dun = clean_filename(nama_dun_values[0]) if nama_dun_values else 'OUTPUT'
-    out_name = f"DEMOGRAFIK {nama_dun}.xlsx"
 
+def generate_demografik(uploaded_files):
+    all_data = []
+    logs = []
+
+    for uploaded_file in uploaded_files:
+        fname = uploaded_file.name
+
+        try:
+            df = pd.read_excel(uploaded_file, dtype=str)
+            df.columns = [c.strip() for c in df.columns]
+
+            col_dm = get_col(df, ['KOD DM', 'kod_dm'])
+            col_nama_dm = get_col(df, ['NamaDM', 'nama_dm', 'NAMA DM'])
+            col_nama_dun = get_col(df, ['nama_dun', 'DUN', 'NAMA DUN'])
+            col_jantina = get_col(df, ['JANTINA', 'jantina'])
+            col_bangsa = get_col(df, ['BANGSA', 'kategori_kaum'])
+            col_umur = get_col(df, ['UMUR', 'umur'])
+            col_party = get_col(df, ['party', 'PARTY'])
+            col_sikap = get_col(df, ['CATATAN', 'sikap'])
+            col_no = get_col(df, ['NoPerkhidmatan', 'noperkhidmatan'])
+            col_pasangan = get_col(df, ['NoKPPasangan', 'NoPerkhidmatanPasangan', 'noperkhidmatanpasangan'])
+
+            required = {
+                'KOD DM': col_dm,
+                'NamaDM': col_nama_dm,
+                'nama_dun / DUN': col_nama_dun,
+                'JANTINA': col_jantina,
+                'BANGSA': col_bangsa,
+                'UMUR': col_umur,
+                'NoPerkhidmatan': col_no,
+                'NoKPPasangan': col_pasangan
+            }
+
+            missing = [k for k, v in required.items() if v is None]
+            if missing:
+                logs.append(f"Skipped {fname} — missing columns: {missing}")
+                continue
+
+            df['_NAMA_DUN'] = df[col_nama_dun].fillna('').astype(str).str.strip().str.upper()
+            df['_KOD DM'] = df[col_dm].fillna('').astype(str).str.strip()
+            df['_NAMA DM'] = df[col_nama_dm].fillna('').astype(str).str.strip()
+            df['_jantina'] = df[col_jantina].fillna('').astype(str).str.strip().str.upper()
+            df['_race'] = df[col_bangsa].apply(normalise_race)
+            df['_age_group'] = df[col_umur].apply(get_age_group)
+
+            df['_party'] = df[col_party].fillna('').astype(str).str.strip().str.upper() if col_party else ''
+            df['_sikap'] = df[col_sikap].apply(normalise_sikap) if col_sikap else ''
+
+            df['_NoPerkhidmatan_clean'] = df[col_no].apply(clean_service_no)
+            df['_NoKPPasangan_clean'] = df[col_pasangan].apply(clean_service_no)
+
+            df['_awal_type'] = df['_NoPerkhidmatan_clean'].apply(classify_awal)
+            df['_Pasangan Polis'] = df['_NoKPPasangan_clean'].apply(lambda x: 1 if is_polis(x) else 0)
+            df['_Pasangan Askar'] = df['_NoKPPasangan_clean'].apply(lambda x: 1 if is_askar(x) else 0)
+
+            all_data.append(df)
+            logs.append(f"Loaded {fname}: {len(df):,} rows")
+
+        except Exception as e:
+            logs.append(f"Error reading {fname}: {e}")
+
+    if not all_data:
+        raise ValueError("No valid data loaded.\n" + "\n".join(logs))
+
+    final_df = pd.concat(all_data, ignore_index=True)
+
+    # Sort DUNs alphabetically for a predictable sheet order.
+    dun_names = sorted(x for x in final_df['_NAMA_DUN'].unique() if x)
+
+    if not dun_names:
+        raise ValueError("No DUN name found in the uploaded data (nama_dun / DUN column is empty).")
+
+    wb = Workbook()
+    wb.remove(wb.active)  # drop the default blank sheet
+
+    existing_sheet_names = set()
+
+    for dun in dun_names:
+        dun_df = final_df[final_df['_NAMA_DUN'] == dun]
+        rumusan_df = build_rumusan_df(dun_df)
+
+        sheet_name = clean_sheet_name(dun, existing_sheet_names)
+        ws = wb.create_sheet(title=sheet_name)
+        write_dun_sheet(ws, rumusan_df)
+
+        logs.append(f"Built sheet '{sheet_name}': {len(dun_df):,} rows, {len(rumusan_df) - 1} DM(s)")
+
+    output = io.BytesIO()
     wb.save(output)
     output.seek(0)
+
+    if len(dun_names) == 1:
+        out_name = f"DEMOGRAFIK {clean_filename(dun_names[0])}.xlsx"
+    else:
+        out_name = f"DEMOGRAFIK ({len(dun_names)} DUN).xlsx"
 
     return output.getvalue(), out_name, logs
 
