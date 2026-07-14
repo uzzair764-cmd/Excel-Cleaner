@@ -79,6 +79,24 @@ def clean_sheet_name(value, existing_names):
     return name
 
 
+def kod_dun_digits(kod_dun):
+    """Strip a kod_dun value down to just its digits (handles floats like
+    '14.0' from Excel and any stray non-numeric characters)."""
+    kod_str = str(kod_dun).strip().split('.')[0]
+    return re.sub(r'\D', '', kod_str)
+
+
+def kod_dun_sort_key(kod_dun):
+    digits = kod_dun_digits(kod_dun)
+    return int(digits) if digits else -1
+
+
+def format_sheet_label(kod_dun, nama_dun):
+    digits = kod_dun_digits(kod_dun)
+    last2 = digits[-2:].zfill(2) if digits else '00'
+    return f"N.{last2} {nama_dun}"
+
+
 def format_kod_dm(value):
     kod = str(value).strip()
     if kod in {'', 'None', 'nan', 'NaN'}:
@@ -381,6 +399,7 @@ def generate_demografik(uploaded_files):
 
             col_dm = get_col(df, ['KOD DM', 'kod_dm'])
             col_nama_dm = get_col(df, ['NamaDM', 'nama_dm', 'NAMA DM'])
+            col_kod_dun = get_col(df, ['kod_dun', 'KOD DUN', 'KODDUN'])
             col_nama_dun = get_col(df, ['nama_dun', 'DUN', 'NAMA DUN'])
             col_jantina = get_col(df, ['JANTINA', 'jantina'])
             col_bangsa = get_col(df, ['BANGSA', 'kategori_kaum', 'KAUM'])
@@ -393,6 +412,7 @@ def generate_demografik(uploaded_files):
             required = {
                 'KOD DM': col_dm,
                 'NamaDM': col_nama_dm,
+                'kod_dun': col_kod_dun,
                 'nama_dun / DUN': col_nama_dun,
                 'JANTINA': col_jantina,
                 'BANGSA': col_bangsa,
@@ -406,6 +426,7 @@ def generate_demografik(uploaded_files):
                 logs.append(f"Skipped {fname} — missing columns: {missing}")
                 continue
 
+            df['_KOD_DUN'] = df[col_kod_dun].fillna('').astype(str).str.strip()
             df['_NAMA_DUN'] = df[col_nama_dun].fillna('').astype(str).str.strip().str.upper()
             df['_KOD DM'] = df[col_dm].fillna('').astype(str).str.strip()
             df['_NAMA DM'] = df[col_nama_dm].fillna('').astype(str).str.strip()
@@ -434,22 +455,31 @@ def generate_demografik(uploaded_files):
 
     final_df = pd.concat(all_data, ignore_index=True)
 
-    # Sort DUNs alphabetically for a predictable sheet order.
-    dun_names = sorted(x for x in final_df['_NAMA_DUN'].unique() if x)
+    # Unique (kod_dun, nama_dun) combos, sorted by kod_dun ascending.
+    dun_combos = (
+        final_df[['_KOD_DUN', '_NAMA_DUN']]
+        .drop_duplicates()
+    )
+    dun_combos = dun_combos[(dun_combos['_KOD_DUN'] != '') & (dun_combos['_NAMA_DUN'] != '')]
+    dun_combos = sorted(
+        dun_combos.itertuples(index=False, name=None),
+        key=lambda pair: kod_dun_sort_key(pair[0])
+    )
 
-    if not dun_names:
-        raise ValueError("No DUN name found in the uploaded data (nama_dun / DUN column is empty).")
+    if not dun_combos:
+        raise ValueError("No DUN name/kod_dun found in the uploaded data.")
 
     wb = Workbook()
     wb.remove(wb.active)  # drop the default blank sheet
 
     existing_sheet_names = set()
 
-    for dun in dun_names:
-        dun_df = final_df[final_df['_NAMA_DUN'] == dun]
+    for kod_dun, nama_dun in dun_combos:
+        dun_df = final_df[(final_df['_KOD_DUN'] == kod_dun) & (final_df['_NAMA_DUN'] == nama_dun)]
         rumusan_df = build_rumusan_df(dun_df)
 
-        sheet_name = clean_sheet_name(dun, existing_sheet_names)
+        sheet_label = format_sheet_label(kod_dun, nama_dun)
+        sheet_name = clean_sheet_name(sheet_label, existing_sheet_names)
         ws = wb.create_sheet(title=sheet_name)
         write_dun_sheet(ws, rumusan_df)
 
@@ -459,10 +489,11 @@ def generate_demografik(uploaded_files):
     wb.save(output)
     output.seek(0)
 
-    if len(dun_names) == 1:
-        out_name = f"DEMOGRAFIK {clean_filename(dun_names[0])}.xlsx"
+    if len(dun_combos) == 1:
+        kod_dun, nama_dun = dun_combos[0]
+        out_name = f"DEMOGRAFIK {clean_filename(format_sheet_label(kod_dun, nama_dun))}.xlsx"
     else:
-        out_name = f"DEMOGRAFIK ({len(dun_names)} DUN).xlsx"
+        out_name = f"DEMOGRAFIK ({len(dun_combos)} DUN).xlsx"
 
     return output.getvalue(), out_name, logs
 
