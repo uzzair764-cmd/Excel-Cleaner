@@ -47,7 +47,7 @@ def prepare_demografik_df(raw_df, cleaned_df):
     cleaned = cleaned_df.copy()
 
     needed_cols = [
-        "nokp", "umur", "jantina", "kaum_spr", "kategori_kaum",
+        "nokp", "umur", "jantina", "kaum_spr",
         "party", "number", "kod_parlimen", "nama_parlimen",
         "kod_dun", "nama_dun", "kod_dm", "nama_dm"
     ]
@@ -60,16 +60,14 @@ def prepare_demografik_df(raw_df, cleaned_df):
         if col not in cleaned.columns:
             cleaned[col] = ""
 
-    race_source = "kategori_kaum" if "kategori_kaum" in raw.columns else "kaum_spr"
-
-    raw["_race"] = raw[race_source].apply(normalise_race)
+    raw["_race"] = raw["kaum_spr"].apply(normalise_race)
     raw["_age"] = raw["umur"].apply(age_group)
     raw["_jantina"] = raw["jantina"].astype(str).str.strip().str.upper()
 
     cleaned["_tel_count"] = 1
 
     service_col = get_service_col(cleaned)
-
+    
     if service_col:
         svc = cleaned[service_col].astype(str).str.strip().str.upper()
     else:
