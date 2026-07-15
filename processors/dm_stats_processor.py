@@ -32,7 +32,7 @@ HEADERS = [
 ]
 
 MAIN_RACES = ['MELAYU', 'CINA', 'INDIA', 'LAIN-LAIN']
-AGE_GROUPS = ['18-24', '25-30', '31-40', '41-50', '51-60', '61+']
+AGE_GROUPS = ['18-21', '22-30', '31-40', '41-50', '51-60', '61+']
 PARTY_COLS = ['PAS', 'PKR', 'PPBM', 'UMNO']
 SIKAP_COLS = ['PUTIH', 'KELABU', 'HITAM']
 
@@ -143,10 +143,10 @@ def is_askar(value):
 def get_age_group(value):
     try:
         a = int(float(value))
-        if 18 <= a <= 24:
-            return '18-24'
-        elif 25 <= a <= 30:
-            return '25-30'
+        if 18 <= a <= 21:
+            return '18-21'
+        elif 22 <= a <= 30:
+            return '22-30'
         elif 31 <= a <= 40:
             return '31-40'
         elif 41 <= a <= 50:
