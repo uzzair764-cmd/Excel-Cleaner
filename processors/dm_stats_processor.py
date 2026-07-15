@@ -20,7 +20,7 @@ HEADERS = [
     'KOD DM', 'NAMA DM', 'JUMLAH',
     'LELAKI', 'LELAKI (%)', 'PEREMPUAN', 'PEREMPUAN (%)',
     'MELAYU', 'MELAYU (%)', 'CINA', 'CINA (%)', 'INDIA', 'INDIA (%)', 'LAIN-LAIN', 'LAIN-LAIN (%)',
-    '18-24', '18-24 (%)', '25-30', '25-30 (%)', '31-40', '31-40 (%)',
+    '18-21', '18-21 (%)', '22-30', '22-30 (%)', '31-40', '31-40 (%)',
     '41-50', '41-50 (%)', '51-60', '51-60 (%)', '61+', '61+ (%)',
     'PAS', 'PAS (%)', 'PKR', 'PKR (%)', 'PPBM', 'PPBM (%)', 'UMNO', 'UMNO (%)',
     'PUTIH', 'PUTIH (%)', 'KELABU', 'KELABU (%)', 'HITAM', 'HITAM (%)',
