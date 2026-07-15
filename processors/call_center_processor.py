@@ -18,6 +18,7 @@ COLUMN_MAP = {
     "nama": "name",
     "phone 1": "number",
     "bangsa": "kaum_spr",
+    "kaum": "kaum_spr",          # <-- added: maps new "kaum" header to kaum_spr
     "kod lokaliti": "kod_lokaliti",
     "lokaliti": "nama_lokaliti",
     "kod dm": "kod_dm",
