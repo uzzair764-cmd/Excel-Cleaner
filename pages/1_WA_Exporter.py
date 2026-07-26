@@ -124,6 +124,7 @@ def get_structure_options(input_level):
             "DUN > DUN.xlsx": "DUN_FILE",
             "DUN > KAUM": "DUN_KAUM",
             "DUN > AGE RANGE": "DUN_AGE",
+            "DUN > AGE RANGE > DM.xlsx": "DUN_AGE_DM",
             "DUN > DM > ML/MP/...": "DUN_DM_CODE",
             "COMBINE ALL INPUT FILES > ONE XLSX": "COMBINE_ALL",
         }
@@ -134,6 +135,7 @@ def get_structure_options(input_level):
         "PARLIMEN > DUN.xlsx": "PARLIMEN_DUN_FILE",
         "PARLIMEN > DUN > KAUM": "PARLIMEN_DUN_KAUM",
         "PARLIMEN > DUN > AGE RANGE": "PARLIMEN_DUN_AGE",
+        "PARLIMEN > DUN > AGE RANGE > DM.xlsx": "PARLIMEN_DUN_AGE_DM",
         "PARLIMEN > DUN > DM > ML/MP/...": "PARLIMEN_DUN_DM_CODE",
         "PARLIMEN > PARLIMEN.xlsx": "PARLIMEN_FILE",
         "COMBINE ALL INPUT FILES > ONE XLSX": "COMBINE_ALL",
@@ -170,6 +172,10 @@ def map_structure_to_config(structure_code):
         group_levels = ["DUN", "AGE"]
         last_group_as_folder = False
 
+    elif structure_code == "DUN_AGE_DM":
+        group_levels = ["DUN", "AGE", "DM"]
+        last_group_as_folder = False
+
     elif structure_code == "DUN_DM_CODE":
         group_levels = ["DUN", "DM"]
         last_group_as_folder = True
@@ -195,6 +201,10 @@ def map_structure_to_config(structure_code):
 
     elif structure_code == "PARLIMEN_DUN_AGE":
         group_levels = ["PARLIMEN", "DUN", "AGE"]
+        last_group_as_folder = False
+
+    elif structure_code == "PARLIMEN_DUN_AGE_DM":
+        group_levels = ["PARLIMEN", "DUN", "AGE", "DM"]
         last_group_as_folder = False
 
     elif structure_code == "PARLIMEN_DUN_DM_CODE":
@@ -346,6 +356,18 @@ def build_folder_preview(input_level, structure_code, age_ranges):
                 lines.append(f"{prefix} {age}.xlsx")
             return "\n".join(lines)
 
+        if structure_code == "DUN_AGE_DM":
+            lines = ["voter_outputs/", "└── N.01 DUN_NAME/"]
+            for i, age in enumerate(age_labels):
+                is_last_age = (i == len(age_labels) - 1)
+                age_prefix = "    └──" if is_last_age else "    ├──"
+                child_indent = "        " if is_last_age else "    │   "
+                lines.append(f"{age_prefix} {age}/")
+                lines.append(f"{child_indent}├── DM01 NAMA_DM.xlsx")
+                lines.append(f"{child_indent}├── DM02 NAMA_DM.xlsx")
+                lines.append(f"{child_indent}└── DM03 NAMA_DM.xlsx")
+            return "\n".join(lines)
+
         if structure_code == "DUN_DM_CODE":
             return """voter_outputs/
 └── N.01 DUN_NAME/
@@ -391,6 +413,18 @@ def build_folder_preview(input_level, structure_code, age_ranges):
             for i, age in enumerate(age_labels):
                 prefix = "        └──" if i == len(age_labels) - 1 else "        ├──"
                 lines.append(f"{prefix} {age}.xlsx")
+            return "\n".join(lines)
+
+        if structure_code == "PARLIMEN_DUN_AGE_DM":
+            lines = ["voter_outputs/", "└── P001 PARLIMEN_NAME/", "    └── N.01 DUN_NAME/"]
+            for i, age in enumerate(age_labels):
+                is_last_age = (i == len(age_labels) - 1)
+                age_prefix = "        └──" if is_last_age else "        ├──"
+                child_indent = "            " if is_last_age else "        │   "
+                lines.append(f"{age_prefix} {age}/")
+                lines.append(f"{child_indent}├── DM01 NAMA_DM.xlsx")
+                lines.append(f"{child_indent}├── DM02 NAMA_DM.xlsx")
+                lines.append(f"{child_indent}└── DM03 NAMA_DM.xlsx")
             return "\n".join(lines)
 
         if structure_code == "PARLIMEN_DUN_DM_CODE":
