@@ -126,6 +126,7 @@ def get_structure_options(input_level):
             "DUN > AGE RANGE": "DUN_AGE",
             "DUN > AGE RANGE > DM.xlsx": "DUN_AGE_DM",
             "DUN > DM > ML/MP/...": "DUN_DM_CODE",
+            "DUN > DM > LOKALITI": "DUN_DM_LOKALITI",
             "COMBINE ALL INPUT FILES > ONE XLSX": "COMBINE_ALL",
         }
 
@@ -137,6 +138,7 @@ def get_structure_options(input_level):
         "PARLIMEN > DUN > AGE RANGE": "PARLIMEN_DUN_AGE",
         "PARLIMEN > DUN > AGE RANGE > DM.xlsx": "PARLIMEN_DUN_AGE_DM",
         "PARLIMEN > DUN > DM > ML/MP/...": "PARLIMEN_DUN_DM_CODE",
+        "PARLIMEN > DUN > DM > LOKALITI": "PARLIMEN_DUN_DM_LOKALITI",
         "PARLIMEN > PARLIMEN.xlsx": "PARLIMEN_FILE",
         "COMBINE ALL INPUT FILES > ONE XLSX": "COMBINE_ALL",
     }
@@ -181,6 +183,10 @@ def map_structure_to_config(structure_code):
         last_group_as_folder = True
         force_split_by_code = True
 
+    elif structure_code == "DUN_DM_LOKALITI":
+        group_levels = ["DUN", "DM", "LOKALITI"]
+        last_group_as_folder = False
+
     elif structure_code == "PARLIMEN_DUN_DM_FILE":
         group_levels = ["PARLIMEN", "DUN", "DM"]
         last_group_as_folder = False
@@ -211,6 +217,10 @@ def map_structure_to_config(structure_code):
         group_levels = ["PARLIMEN", "DUN", "DM"]
         last_group_as_folder = True
         force_split_by_code = True
+
+    elif structure_code == "PARLIMEN_DUN_DM_LOKALITI":
+        group_levels = ["PARLIMEN", "DUN", "DM", "LOKALITI"]
+        last_group_as_folder = False
 
     elif structure_code == "PARLIMEN_FILE":
         group_levels = ["PARLIMEN"]
@@ -377,6 +387,14 @@ def build_folder_preview(input_level, structure_code, age_ranges):
         ├── DM01 NAMA_DM CL.xlsx
         └── DM01 NAMA_DM CP.xlsx"""
 
+        if structure_code == "DUN_DM_LOKALITI":
+            return """voter_outputs/
+└── N.01 DUN_NAME/
+    └── DM01 NAMA_DM/
+        ├── LOK001 NAMA_LOKALITI.xlsx
+        ├── LOK002 NAMA_LOKALITI.xlsx
+        └── LOK003 NAMA_LOKALITI.xlsx"""
+
     else:
         if structure_code == "PARLIMEN_DUN_DM_FILE":
             return """voter_outputs/
@@ -435,6 +453,15 @@ def build_folder_preview(input_level, structure_code, age_ranges):
             ├── DM01 NAMA_DM ML.xlsx
             ├── DM01 NAMA_DM MP.xlsx
             └── DM01 NAMA_DM CL.xlsx"""
+
+        if structure_code == "PARLIMEN_DUN_DM_LOKALITI":
+            return """voter_outputs/
+└── P001 PARLIMEN_NAME/
+    └── N.01 DUN_NAME/
+        └── DM01 NAMA_DM/
+            ├── LOK001 NAMA_LOKALITI.xlsx
+            ├── LOK002 NAMA_LOKALITI.xlsx
+            └── LOK003 NAMA_LOKALITI.xlsx"""
 
         if structure_code == "PARLIMEN_FILE":
             return """voter_outputs/
