@@ -495,6 +495,19 @@ def extract_dm_num(kod_dm):
     return f"{int(dm_raw):02d}" if dm_raw else "00"
 
 
+def extract_lokaliti_num(kod_lokaliti):
+    raw = str(kod_lokaliti).strip()
+    digits = re.sub(r"\D", "", raw)
+
+    if digits == "":
+        return "000"
+
+    digits = digits.zfill(10)
+    lokaliti_raw = digits[-3:]
+
+    return f"{int(lokaliti_raw):03d}" if lokaliti_raw else "000"
+
+
 def code_sort_num(text):
     num = re.sub(r"\D", "", str(text))
     return int(num) if num else 0
@@ -540,6 +553,13 @@ def build_labels(df):
             axis=1
         )
         df["__DM_SORT"] = df["kod_dm"].apply(code_sort_num)
+
+    if "kod_lokaliti" in df.columns:
+        df["__LOKALITI_LABEL"] = df.apply(
+            lambda x: f"LOK{extract_lokaliti_num(x.get('kod_lokaliti', ''))} {sanitize(x.get('nama_lokaliti', ''))}",
+            axis=1
+        )
+        df["__LOKALITI_SORT"] = df["kod_lokaliti"].apply(code_sort_num)
 
     if "kaum_clean" in df.columns:
         df["__KAUM_LABEL"] = df["kaum_clean"]
@@ -587,6 +607,10 @@ def get_group_columns(group_levels):
             label_cols.append("__DM_LABEL")
             sort_cols.append("__DM_SORT")
 
+        elif level == "LOKALITI":
+            label_cols.append("__LOKALITI_LABEL")
+            sort_cols.append("__LOKALITI_SORT")
+
         elif level == "KAUM":
             label_cols.append("__KAUM_LABEL")
             sort_cols.append("__KAUM_SORT")
@@ -625,6 +649,9 @@ def get_required_columns(config):
 
         elif level == "DM":
             req.update(["kod_dm", "nama_dm"])
+
+        elif level == "LOKALITI":
+            req.update(["kod_lokaliti", "nama_lokaliti"])
 
         elif level == "KAUM":
             req.add("kategori_kaum")
