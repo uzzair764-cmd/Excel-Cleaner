@@ -363,8 +363,32 @@ def format_code_7digit(raw_code):
     return f".{parlimen}.{dun}.{last}"
 
 
+def format_lokaliti_code(raw_code):
+    """
+    ONE-TIME CUSTOM FORMAT: builds DUN.DM.LOKALITI from a 10-digit
+    kod_lokaliti value.
+
+    kod_lokaliti layout: PARLIMEN(3) + DUN(2) + DM(2) + LOKALITI(3)
+    e.g. "1270702001" -> parlimen=127, dun=07, dm=02, lokaliti=001
+    Output: "07.02.001" (parlimen is dropped, no leading dot).
+    """
+    raw = str(raw_code).strip()
+    digits = re.sub(r"\D", "", raw)
+
+    if digits == "":
+        return ""
+
+    digits = digits.zfill(10)
+
+    dun = digits[3:5]
+    dm = digits[5:7]
+    lokaliti = digits[7:10]
+
+    return f"{dun}.{dm}.{lokaliti}"
+
+
 def format_first_name(row):
-    return format_code_7digit(row.get("kod_dm", ""))
+    return format_lokaliti_code(row.get("kod_lokaliti", ""))
 
 
 def build_wa_df(group):
@@ -588,6 +612,7 @@ def get_required_columns(config):
 
     req.add("number")
     req.add("kod_dm")
+    req.add("kod_lokaliti")
     req.add("kategori_kaum")
     req.add("jantina")
 
