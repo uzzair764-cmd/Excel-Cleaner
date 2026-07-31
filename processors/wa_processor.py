@@ -387,8 +387,19 @@ def format_lokaliti_code(raw_code):
     return f"{dun}.{dm}.{lokaliti}"
 
 
-def format_first_name(row):
-    return format_lokaliti_code(row.get("kod_lokaliti", ""))
+def format_first_name(row, use_lokaliti_format=False):
+    """
+    First Name column formatting.
+
+    use_lokaliti_format=False (default): old format, built from kod_dm
+        -> ".PARLIMEN.DUN.DM" e.g. ".127.07.02"
+    use_lokaliti_format=True: custom format, built from kod_lokaliti
+        -> "DUN.DM.LOKALITI" e.g. "07.02.001"
+    """
+    if use_lokaliti_format:
+        return format_lokaliti_code(row.get("kod_lokaliti", ""))
+
+    return format_code_7digit(row.get("kod_dm", ""))
 
 
 def build_wa_df(group):
@@ -636,9 +647,11 @@ def get_required_columns(config):
 
     req.add("number")
     req.add("kod_dm")
-    req.add("kod_lokaliti")
     req.add("kategori_kaum")
     req.add("jantina")
+
+    if config.get("use_lokaliti_first_name", False):
+        req.add("kod_lokaliti")
 
     for level in group_levels:
         if level == "PARLIMEN":
@@ -853,6 +866,11 @@ def run_export(file_paths, config, progress_callback=None):
     # with the phone number prefixed with "6" (e.g. 60108266239).
     one_way_blast = config.get("one_way_blast", False)
 
+    # NEW: "Use LOKALITI-based First Name format" tickbox.
+    # When True, First Name = DUN.DM.LOKALITI (from kod_lokaliti).
+    # When False (default), First Name = old .PARLIMEN.DUN.DM format (from kod_dm).
+    use_lokaliti_first_name = config.get("use_lokaliti_first_name", False)
+
     if custom_age_ranges:
         ACTIVE_AGE_RANGES = custom_age_ranges
     else:
@@ -1007,7 +1025,10 @@ def run_export(file_paths, config, progress_callback=None):
         axis=1
     )
 
-    df["First Name"] = df.apply(format_first_name, axis=1)
+    df["First Name"] = df.apply(
+        lambda row: format_first_name(row, use_lokaliti_format=use_lokaliti_first_name),
+        axis=1
+    )
 
     df = df[df["First Name"].astype(str).str.strip() != ""].copy()
 
@@ -1178,6 +1199,7 @@ def run_export(file_paths, config, progress_callback=None):
         f"PARTY = {party_filter if party_filter else 'NO FILTER'}",
         f"AGE GROUPS = {custom_age_ranges if custom_age_ranges else 'NO FILTER'}",
         f"ONE WAY BLAST = {'YES' if one_way_blast else 'NO'}",
+        f"FIRST NAME FORMAT = {'DUN.DM.LOKALITI (kod_lokaliti)' if use_lokaliti_first_name else '.PARLIMEN.DUN.DM (kod_dm)'}",
         "",
         "CLEANING",
         f"VALID PHONE ROWS = {format_count(after_phone)}",
