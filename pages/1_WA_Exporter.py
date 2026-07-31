@@ -54,6 +54,7 @@ if st.session_state.get("RESET_FILTERS_NOW", False):
         "party_filter_selected",
         "print_full_summary",
         "one_way_blast",
+        "use_lokaliti_first_name",
         "age_groups",
         "zip_bytes",
         "summary_text",
@@ -593,6 +594,13 @@ with st.sidebar:
         key="one_way_blast"
     )
 
+    use_lokaliti_first_name = st.checkbox(
+        "Use LOKALITI-based First Name (DUN.DM.LOKALITI, e.g. 07.02.001)",
+        value=False,
+        key="use_lokaliti_first_name",
+        help="Off = old format from kod_dm (e.g. .127.07.02). On = new format from kod_lokaliti (e.g. 07.02.001)."
+    )
+
     st.divider()
 
     st.write("Age Groups")
@@ -761,6 +769,7 @@ if run_button:
             "read_all_sheets": False,
             "create_empty_files": False,
             "one_way_blast": one_way_blast,
+            "use_lokaliti_first_name": use_lokaliti_first_name,
         }
 
         progress_bar = st.progress(0)
