@@ -22,7 +22,7 @@ HEADERS = [
     'MELAYU', 'MELAYU (%)', 'CINA', 'CINA (%)', 'INDIA', 'INDIA (%)', 'LAIN-LAIN', 'LAIN-LAIN (%)',
     '18-21', '18-21 (%)', '22-30', '22-30 (%)', '31-40', '31-40 (%)',
     '41-50', '41-50 (%)', '51-60', '51-60 (%)', '61+', '61+ (%)',
-    'PAS', 'PAS (%)', 'PKR', 'PKR (%)', 'PPBM', 'PPBM (%)', 'UMNO', 'UMNO (%)',
+    'UMNO', 'UMNO (%)', 'PKR', 'PKR (%)', 'PAS', 'PAS (%)', 'PPBM', 'PPBM (%)',
     'PUTIH', 'PUTIH (%)', 'KELABU', 'KELABU (%)', 'HITAM', 'HITAM (%)',
     'PENGUNDI AWAL', 'PENGUNDI AWAL (%)',
     'POLIS', 'POLIS (%)',
@@ -33,7 +33,7 @@ HEADERS = [
 
 MAIN_RACES = ['MELAYU', 'CINA', 'INDIA', 'LAIN-LAIN']
 AGE_GROUPS = ['18-21', '22-30', '31-40', '41-50', '51-60', '61+']
-PARTY_COLS = ['PAS', 'PKR', 'PPBM', 'UMNO']
+PARTY_COLS = ['UMNO', 'PKR', 'PAS', 'PPBM']
 SIKAP_COLS = ['PUTIH', 'KELABU', 'HITAM']
 
 
@@ -58,30 +58,7 @@ def clean_filename(value):
     return name if name else 'OUTPUT'
 
 
-def clean_sheet_name(value, existing_names):
-    """Sanitize a worksheet name (Excel: max 31 chars, no \\/?*[]:), and
-    make sure it's unique within the workbook."""
-    name = str(value).strip().upper()
-    name = re.sub(r'[\\/?*\[\]:]', ' ', name)
-    name = ' '.join(name.split())
-    if not name:
-        name = 'DUN'
-    name = name[:31]
-
-    base = name
-    counter = 2
-    while name in existing_names:
-        suffix = f" ({counter})"
-        name = base[:31 - len(suffix)] + suffix
-        counter += 1
-
-    existing_names.add(name)
-    return name
-
-
 def kod_dun_digits(kod_dun):
-    """Strip a kod_dun value down to just its digits (handles floats like
-    '14.0' from Excel and any stray non-numeric characters)."""
     kod_str = str(kod_dun).strip().split('.')[0]
     return re.sub(r'\D', '', kod_str)
 
@@ -89,12 +66,6 @@ def kod_dun_digits(kod_dun):
 def kod_dun_sort_key(kod_dun):
     digits = kod_dun_digits(kod_dun)
     return int(digits) if digits else -1
-
-
-def format_sheet_label(kod_dun, nama_dun):
-    digits = kod_dun_digits(kod_dun)
-    last2 = digits[-2:].zfill(2) if digits else '00'
-    return f"N.{last2} {nama_dun}"
 
 
 def format_kod_dm(value):
@@ -214,16 +185,12 @@ def build_dm_row(kod_dm, nama_dm, grp):
 
     row['PENGUNDI AWAL'] = pengundi_awal
     row['PENGUNDI AWAL (%)'] = pct(pengundi_awal, total)
-
     row['POLIS'] = polis
     row['POLIS (%)'] = pct(polis, total)
-
     row['PASANGAN POLIS'] = pasangan_polis
     row['PASANGAN POLIS (%)'] = pct(pasangan_polis, total)
-
     row['ASKAR'] = askar
     row['ASKAR (%)'] = pct(askar, total)
-
     row['PASANGAN ASKAR'] = pasangan_askar
     row['PASANGAN ASKAR (%)'] = pct(pasangan_askar, total)
 
@@ -237,7 +204,6 @@ def add_total_row(df):
     for h in HEADERS:
         if h in ['KOD DM', 'NAMA DM', 'JUMLAH']:
             continue
-
         if h.endswith('(%)'):
             base = h.replace(' (%)', '')
             total_row[h] = pct(total_row.get(base, 0), total)
@@ -248,7 +214,6 @@ def add_total_row(df):
 
 
 def build_rumusan_df(dun_df):
-    """Build the summary (one row per DM) table for a single DUN's data."""
     rows = []
     for (kod_dm, nama_dm), grp in dun_df.groupby(['_KOD DM', '_NAMA DM'], dropna=False):
         rows.append(build_dm_row(kod_dm, nama_dm, grp))
@@ -261,21 +226,29 @@ def build_rumusan_df(dun_df):
 
     rumusan_df = rumusan_df[HEADERS]
     rumusan_df = rumusan_df.sort_values(by='KOD DM', kind='stable')
-    rumusan_df = add_total_row(rumusan_df)
-    return rumusan_df
+    return add_total_row(rumusan_df)
 
 
-def write_dun_sheet(ws, rumusan_df):
-    """Write and style a single DUN's rumusan_df onto the given worksheet."""
+def add_parliament_total_row(final_df, kod_parlimen, nama_parlimen):
+    """Create one grand-total row from the underlying Parliament-level data."""
+    row = build_dm_row(kod_parlimen, nama_parlimen, final_df)
+    row['KOD DM'] = str(kod_parlimen).strip()
+    row['NAMA DM'] = str(nama_parlimen).strip().upper()
+
+    for h in HEADERS:
+        if h not in row:
+            row[h] = 0
+
+    return pd.DataFrame([row])[HEADERS]
+
+
+def _group_fill_and_edges():
     BLUE = '9DC3E6'
     GREEN = 'A9D18E'
     ORANGE = 'F4B183'
     YELLOW = 'FFD966'
     PURPLE = 'B4A7D6'
     WHITE = 'D9D9D9'
-
-    thin = Side(style='thin', color='000000')
-    medium = Side(style='medium', color='000000')
 
     group_fill = {}
     for c in range(4, 8):
@@ -296,52 +269,55 @@ def write_dun_sheet(ws, rumusan_df):
     thin_right_edges = {5, 9, 11, 13, 17, 19, 21, 23, 25, 29, 31, 33, 37, 39}
     thin_left_edges = {10, 12, 14, 18, 20, 22, 24, 26, 30, 32, 34, 38, 40}
 
+    return group_fill, group_left_edges, group_right_edges, thin_right_edges, thin_left_edges
+
+
+def write_combined_sheet(ws, combined_df, total_row_numbers, parliament_row_number):
+    group_fill, group_left_edges, group_right_edges, thin_right_edges, thin_left_edges = _group_fill_and_edges()
+
+    thin = Side(style='thin', color='000000')
+    medium = Side(style='medium', color='000000')
+
     for col_idx, h in enumerate(HEADERS, start=1):
         cell = ws.cell(row=1, column=col_idx, value=h)
         cell.font = Font(name='Calibri', size=11, bold=True)
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
         if col_idx in group_fill:
             cell.fill = PatternFill('solid', fgColor=group_fill[col_idx])
 
         left = medium if col_idx in group_left_edges else (thin if col_idx in thin_left_edges else thin)
         right = medium if col_idx in group_right_edges else (thin if col_idx in thin_right_edges else thin)
-
         cell.border = Border(left=left, right=right, top=medium, bottom=medium)
 
-    for r_idx, row in enumerate(rumusan_df.itertuples(index=False), start=2):
-        is_total = r_idx == len(rumusan_df) + 1
+    for r_idx, row in enumerate(combined_df.itertuples(index=False), start=2):
+        source_index = r_idx - 2
+        is_total = source_index in total_row_numbers
+        is_parliament = source_index == parliament_row_number
+        is_special = is_total or is_parliament
 
         for c_idx, value in enumerate(row, start=1):
             cell = ws.cell(row=r_idx, column=c_idx, value=value)
+            cell.alignment = Alignment(
+                horizontal='left' if c_idx == 2 else 'center',
+                vertical='center'
+            )
+            cell.font = Font(name='Calibri', size=11, bold=is_special)
 
-            if c_idx == 2:
-                cell.alignment = Alignment(horizontal='left', vertical='center')
-            else:
-                cell.alignment = Alignment(horizontal='center', vertical='center')
-
-            cell.font = Font(name='Calibri', size=11, bold=is_total)
-
-            if c_idx in group_fill and is_total:
+            if c_idx in group_fill and is_special:
                 cell.fill = PatternFill('solid', fgColor=group_fill[c_idx])
 
             left = medium if c_idx in group_left_edges else (thin if c_idx in thin_left_edges else thin)
             right = medium if c_idx in group_right_edges else (thin if c_idx in thin_right_edges else thin)
-
             cell.border = Border(
                 left=left,
                 right=right,
-                top=medium if is_total else thin,
-                bottom=medium if is_total else thin
+                top=medium if is_special else thin,
+                bottom=medium if is_special else thin
             )
 
             col_name = HEADERS[c_idx - 1]
-
             if isinstance(value, (int, float)):
-                if '(%)' in col_name:
-                    cell.number_format = '0.0'
-                else:
-                    cell.number_format = '#,##0'
+                cell.number_format = '0.0' if '(%)' in col_name else '#,##0'
 
     widths = {
         'A': 13, 'B': 25, 'C': 13,
@@ -354,14 +330,10 @@ def write_dun_sheet(ws, rumusan_df):
         'AP': 21.3, 'AQ': 24.9, 'AR': 10.6, 'AS': 14, 'AT': 21.4, 'AU': 25,
         'AV': 11.4, 'AW': 14.9, 'AX': 22.4, 'AY': 26
     }
-
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
 
-    max_len = 0
-    for row in range(1, ws.max_row + 1):
-        value = ws.cell(row=row, column=2).value
-        max_len = max(max_len, len(str(value or '')))
+    max_len = max((len(str(ws.cell(row=r, column=2).value or '')) for r in range(1, ws.max_row + 1)), default=0)
     ws.column_dimensions['B'].width = min(max_len + 4, 60)
 
     for row in range(2, ws.max_row + 1):
@@ -370,11 +342,9 @@ def write_dun_sheet(ws, rumusan_df):
     ws.row_dimensions[1].height = 15.75
     ws.freeze_panes = 'A2'
 
-    end_row = len(rumusan_df) + 1
+    end_row = len(combined_df) + 1
     table_ref = f"A1:AY{end_row}"
-
-    # Table display names must also be unique within the workbook.
-    tab = Table(displayName=f"Table_{ws.title.replace(' ', '_')[:20]}_{ws.parent.index(ws)}", ref=table_ref)
+    tab = Table(displayName="Table_Demografik_Combined", ref=table_ref)
     style = TableStyleInfo(
         name="TableStyleLight1",
         showFirstColumn=False,
@@ -392,7 +362,6 @@ def generate_demografik(uploaded_files):
 
     for uploaded_file in uploaded_files:
         fname = uploaded_file.name
-
         try:
             df = pd.read_excel(uploaded_file, dtype=str)
             df.columns = [c.strip() for c in df.columns]
@@ -401,6 +370,8 @@ def generate_demografik(uploaded_files):
             col_nama_dm = get_col(df, ['NamaDM', 'nama_dm', 'NAMA DM'])
             col_kod_dun = get_col(df, ['kod_dun', 'KOD DUN', 'KODDUN'])
             col_nama_dun = get_col(df, ['nama_dun', 'DUN', 'NAMA DUN'])
+            col_kod_parlimen = get_col(df, ['kod_parlimen', 'KOD PARLIMEN', 'KODPARLIMEN'])
+            col_nama_parlimen = get_col(df, ['nama_parlimen', 'NAMA PARLIMEN', 'NAMAPARLIMEN'])
             col_jantina = get_col(df, ['JANTINA', 'jantina'])
             col_bangsa = get_col(df, ['kaum', 'BANGSA', 'kategori_kaum'])
             col_umur = get_col(df, ['UMUR', 'umur'])
@@ -414,6 +385,8 @@ def generate_demografik(uploaded_files):
                 'NamaDM': col_nama_dm,
                 'kod_dun': col_kod_dun,
                 'nama_dun / DUN': col_nama_dun,
+                'kod_parlimen': col_kod_parlimen,
+                'nama_parlimen': col_nama_parlimen,
                 'JANTINA': col_jantina,
                 'BANGSA': col_bangsa,
                 'UMUR': col_umur,
@@ -428,18 +401,17 @@ def generate_demografik(uploaded_files):
 
             df['_KOD_DUN'] = df[col_kod_dun].fillna('').astype(str).str.strip()
             df['_NAMA_DUN'] = df[col_nama_dun].fillna('').astype(str).str.strip().str.upper()
+            df['_KOD_PARLIMEN'] = df[col_kod_parlimen].fillna('').astype(str).str.strip()
+            df['_NAMA_PARLIMEN'] = df[col_nama_parlimen].fillna('').astype(str).str.strip().str.upper()
             df['_KOD DM'] = df[col_dm].fillna('').astype(str).str.strip()
             df['_NAMA DM'] = df[col_nama_dm].fillna('').astype(str).str.strip()
             df['_jantina'] = df[col_jantina].fillna('').astype(str).str.strip().str.upper()
             df['_race'] = df[col_bangsa].apply(normalise_race)
             df['_age_group'] = df[col_umur].apply(get_age_group)
-
             df['_party'] = df[col_party].fillna('').astype(str).str.strip().str.upper() if col_party else ''
             df['_sikap'] = df[col_sikap].apply(normalise_sikap) if col_sikap else ''
-
             df['_NoPerkhidmatan_clean'] = df[col_no].apply(clean_service_no)
             df['_NoKPPasangan_clean'] = df[col_pasangan].apply(clean_service_no)
-
             df['_awal_type'] = df['_NoPerkhidmatan_clean'].apply(classify_awal)
             df['_Pasangan Polis'] = df['_NoKPPasangan_clean'].apply(lambda x: 1 if is_polis(x) else 0)
             df['_Pasangan Askar'] = df['_NoKPPasangan_clean'].apply(lambda x: 1 if is_askar(x) else 0)
@@ -455,11 +427,19 @@ def generate_demografik(uploaded_files):
 
     final_df = pd.concat(all_data, ignore_index=True)
 
-    # Unique (kod_dun, nama_dun) combos, sorted by kod_dun ascending.
-    dun_combos = (
-        final_df[['_KOD_DUN', '_NAMA_DUN']]
-        .drop_duplicates()
-    )
+    parlimen_combos = final_df[['_KOD_PARLIMEN', '_NAMA_PARLIMEN']].drop_duplicates()
+    parlimen_combos = parlimen_combos[
+        (parlimen_combos['_KOD_PARLIMEN'] != '') &
+        (parlimen_combos['_NAMA_PARLIMEN'] != '')
+    ]
+    if len(parlimen_combos) != 1:
+        raise ValueError(
+            f"Expected exactly one Parliament in the uploaded data, found {len(parlimen_combos)}."
+        )
+
+    kod_parlimen, nama_parlimen = parlimen_combos.iloc[0].tolist()
+
+    dun_combos = final_df[['_KOD_DUN', '_NAMA_DUN']].drop_duplicates()
     dun_combos = dun_combos[(dun_combos['_KOD_DUN'] != '') & (dun_combos['_NAMA_DUN'] != '')]
     dun_combos = sorted(
         dun_combos.itertuples(index=False, name=None),
@@ -469,31 +449,36 @@ def generate_demografik(uploaded_files):
     if not dun_combos:
         raise ValueError("No DUN name/kod_dun found in the uploaded data.")
 
-    wb = Workbook()
-    wb.remove(wb.active)  # drop the default blank sheet
-
-    existing_sheet_names = set()
+    combined_parts = []
+    total_row_numbers = set()
 
     for kod_dun, nama_dun in dun_combos:
-        dun_df = final_df[(final_df['_KOD_DUN'] == kod_dun) & (final_df['_NAMA_DUN'] == nama_dun)]
+        dun_df = final_df[
+            (final_df['_KOD_DUN'] == kod_dun) &
+            (final_df['_NAMA_DUN'] == nama_dun)
+        ]
         rumusan_df = build_rumusan_df(dun_df)
+        start_index = sum(len(part) for part in combined_parts)
+        total_row_numbers.add(start_index + len(rumusan_df) - 1)
+        combined_parts.append(rumusan_df)
+        logs.append(f"Built DUN N.{kod_dun_digits(kod_dun)[-2:].zfill(2)} {nama_dun}: {len(dun_df):,} rows, {len(rumusan_df) - 1} DM(s)")
 
-        sheet_label = format_sheet_label(kod_dun, nama_dun)
-        sheet_name = clean_sheet_name(sheet_label, existing_sheet_names)
-        ws = wb.create_sheet(title=sheet_name)
-        write_dun_sheet(ws, rumusan_df)
+    parliament_df = add_parliament_total_row(final_df, kod_parlimen, nama_parlimen)
+    combined_df = pd.concat(combined_parts + [parliament_df], ignore_index=True)
+    parliament_row_number = len(combined_df) - 1
 
-        logs.append(f"Built sheet '{sheet_name}': {len(dun_df):,} rows, {len(rumusan_df) - 1} DM(s)")
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'DEMOGRAFIK'
+    write_combined_sheet(ws, combined_df, total_row_numbers, parliament_row_number)
 
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
 
-    if len(dun_combos) == 1:
-        kod_dun, nama_dun = dun_combos[0]
-        out_name = f"DEMOGRAFIK {clean_filename(format_sheet_label(kod_dun, nama_dun))}.xlsx"
-    else:
-        out_name = f"DEMOGRAFIK ({len(dun_combos)} DUN).xlsx"
+    out_name = f"DEMOGRAFIK {clean_filename(nama_parlimen)}.xlsx"
+    logs.append(f"Combined {len(dun_combos)} DUN(s) into one worksheet")
+    logs.append(f"Parliament grand total: {kod_parlimen} - {nama_parlimen} ({len(final_df):,} rows)")
 
     return output.getvalue(), out_name, logs
 
@@ -502,7 +487,6 @@ if uploaded_files:
     if st.button("Generate DEMOGRAFIK"):
         try:
             excel_bytes, out_name, logs = generate_demografik(uploaded_files)
-
             st.success(f"Generated: {out_name}")
 
             with st.expander("Processing log"):
@@ -515,7 +499,6 @@ if uploaded_files:
                 file_name=out_name,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-
         except Exception as e:
             st.error(str(e))
 else:
