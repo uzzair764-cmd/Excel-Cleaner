@@ -16,13 +16,7 @@ st.set_page_config(
 )
 
 
-# ============================================================
-# TITLE
-# ============================================================
-
-st.title(
-    "📊 DEMOGRAFIK Generator"
-)
+st.title("📊 DEMOGRAFIK Generator")
 
 
 # ============================================================
@@ -31,10 +25,7 @@ st.title(
 
 uploaded_files = st.file_uploader(
     "Upload Excel file(s)",
-    type=[
-        "xlsx",
-        "xls"
-    ],
+    type=["xlsx", "xls"],
     accept_multiple_files=True,
     key="dm_stats_excel_uploader"
 )
@@ -44,9 +35,7 @@ uploaded_files = st.file_uploader(
 # AGE GROUP INPUT
 # ============================================================
 
-st.subheader(
-    "Age Group Settings"
-)
+st.subheader("Age Group Settings")
 
 st.caption(
     "Enter the age ranges to be used in the DEMOGRAFIK calculation."
@@ -113,10 +102,6 @@ with age_col6:
     )
 
 
-# ============================================================
-# BUILD AGE GROUP LIST
-# ============================================================
-
 age_groups = [
     age_group_1.strip(),
     age_group_2.strip(),
@@ -140,9 +125,9 @@ if uploaded_files:
 
         try:
 
-            # =================================================
-            # VALIDATE AGE GROUPS
-            # =================================================
+            # ------------------------------------------------
+            # Validate age groups
+            # ------------------------------------------------
 
             if any(
                 not age
@@ -156,9 +141,7 @@ if uploaded_files:
                 st.stop()
 
 
-            if len(
-                set(age_groups)
-            ) != len(age_groups):
+            if len(set(age_groups)) != len(age_groups):
 
                 st.error(
                     "Age groups must be unique."
@@ -167,48 +150,9 @@ if uploaded_files:
                 st.stop()
 
 
-            # =================================================
-            # BASIC AGE FORMAT VALIDATION
-            # =================================================
-
-            invalid_age_groups = []
-
-            for age in age_groups:
-
-                if not (
-                    __import__("re").fullmatch(
-                        r"\d+\s*-\s*\d+",
-                        age
-                    )
-                    or
-                    __import__("re").fullmatch(
-                        r"\d+\s*\+",
-                        age
-                    )
-                ):
-
-                    invalid_age_groups.append(
-                        age
-                    )
-
-
-            if invalid_age_groups:
-
-                st.error(
-                    "Invalid age group format: "
-                    + ", ".join(
-                        invalid_age_groups
-                    )
-                    + ". Use formats such as "
-                    "18-21 or 61+."
-                )
-
-                st.stop()
-
-
-            # =================================================
-            # GENERATE WORKBOOK
-            # =================================================
+            # ------------------------------------------------
+            # Generate workbook
+            # ------------------------------------------------
 
             excel_bytes, out_name, logs = (
                 generate_demografik(
@@ -218,18 +162,14 @@ if uploaded_files:
             )
 
 
-            # =================================================
-            # SUCCESS
-            # =================================================
-
             st.success(
                 f"Generated: {out_name}"
             )
 
 
-            # =================================================
-            # PROCESSING LOG
-            # =================================================
+            # ------------------------------------------------
+            # Processing log
+            # ------------------------------------------------
 
             with st.expander(
                 "Processing log"
@@ -237,14 +177,12 @@ if uploaded_files:
 
                 for log in logs:
 
-                    st.write(
-                        log
-                    )
+                    st.write(log)
 
 
-            # =================================================
-            # DOWNLOAD
-            # =================================================
+            # ------------------------------------------------
+            # Download
+            # ------------------------------------------------
 
             st.download_button(
                 label="Download Excel",
