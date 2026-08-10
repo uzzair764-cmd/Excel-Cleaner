@@ -1,4 +1,3 @@
-```python
 import io
 import re
 
@@ -1686,4 +1685,3 @@ def generate_demografik(
         out_name,
         logs
     )
-```
