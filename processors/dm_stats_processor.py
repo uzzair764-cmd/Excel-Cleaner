@@ -22,7 +22,7 @@ HEADERS = [
     'MELAYU', 'MELAYU (%)', 'CINA', 'CINA (%)', 'INDIA', 'INDIA (%)', 'LAIN-LAIN', 'LAIN-LAIN (%)',
     '18-21', '18-21 (%)', '22-30', '22-30 (%)', '31-40', '31-40 (%)',
     '41-50', '41-50 (%)', '51-60', '51-60 (%)', '61+', '61+ (%)',
-    'PAS', 'PAS (%)', 'PKR', 'PKR (%)', 'PPBM', 'PPBM (%)', 'UMNO', 'UMNO (%)',
+    'UMNO', 'UMNO (%)', 'PKR', 'PKR (%)', 'PAS', 'PAS (%)', 'PPBM', 'PPBM (%)',
     'PUTIH', 'PUTIH (%)', 'KELABU', 'KELABU (%)', 'HITAM', 'HITAM (%)',
     'PENGUNDI AWAL', 'PENGUNDI AWAL (%)',
     'POLIS', 'POLIS (%)',
@@ -33,7 +33,7 @@ HEADERS = [
 
 MAIN_RACES = ['MELAYU', 'CINA', 'INDIA', 'LAIN-LAIN']
 AGE_GROUPS = ['18-21', '22-30', '31-40', '41-50', '51-60', '61+']
-PARTY_COLS = ['PAS', 'PKR', 'PPBM', 'UMNO']
+PARTY_COLS = ['UMNO', 'PKR', 'PAS', 'PPBM']
 SIKAP_COLS = ['PUTIH', 'KELABU', 'HITAM']
 
 
