@@ -3,37 +3,113 @@ import re
 
 import pandas as pd
 from openpyxl import Workbook
-from openpyxl.styles import (
-    Font,
-    Border,
-    Side,
-    PatternFill,
-    Alignment
-)
+from openpyxl.styles import Font, Border, PatternFill, Alignment
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
 
 # ============================================================
-# CONSTANTS
+# COLUMN DEFINITIONS
 # ============================================================
+
+HEADERS = [
+    'KOD',
+    'NAMA',
+    'JUMLAH',
+
+    'LELAKI',
+    'LELAKI (%)',
+    'PEREMPUAN',
+    'PEREMPUAN (%)',
+
+    'MELAYU',
+    'MELAYU (%)',
+    'CINA',
+    'CINA (%)',
+    'INDIA',
+    'INDIA (%)',
+    'LAIN-LAIN',
+    'LAIN-LAIN (%)',
+
+    '18-21',
+    '18-21 (%)',
+    '22-30',
+    '22-30 (%)',
+    '31-40',
+    '31-40 (%)',
+    '41-50',
+    '41-50 (%)',
+    '51-60',
+    '51-60 (%)',
+    '61+',
+    '61+ (%)',
+
+    'UMNO',
+    'UMNO (%)',
+    'PKR',
+    'PKR (%)',
+    'PAS',
+    'PAS (%)',
+    'PPBM',
+    'PPBM (%)',
+
+    'PUTIH',
+    'PUTIH (%)',
+    'KELABU',
+    'KELABU (%)',
+    'HITAM',
+    'HITAM (%)',
+
+    'PENGUNDI AWAL',
+    'PENGUNDI AWAL (%)',
+
+    'POLIS',
+    'POLIS (%)',
+
+    'PASANGAN POLIS',
+    'PASANGAN POLIS (%)',
+
+    'ASKAR',
+    'ASKAR (%)',
+
+    'PASANGAN ASKAR',
+    'PASANGAN ASKAR (%)',
+]
 
 MAIN_RACES = [
-    "MELAYU",
-    "CINA",
-    "INDIA",
-    "LAIN-LAIN"
+    'MELAYU',
+    'CINA',
+    'INDIA',
+    'LAIN-LAIN'
+]
+
+AGE_GROUPS = [
+    '18-21',
+    '22-30',
+    '31-40',
+    '41-50',
+    '51-60',
+    '61+'
 ]
 
 PARTY_COLS = [
-    "UMNO",
-    "PKR",
-    "PAS",
-    "PPBM"
+    'UMNO',
+    'PKR',
+    'PAS',
+    'PPBM'
 ]
 
 SIKAP_COLS = [
-    "PUTIH",
-    "KELABU",
-    "HITAM"
+    'PUTIH',
+    'KELABU',
+    'HITAM'
+]
+
+AWAL_COLS = [
+    'PENGUNDI AWAL',
+    'POLIS',
+    'PASANGAN POLIS',
+    'ASKAR',
+    'PASANGAN ASKAR'
 ]
 
 
@@ -42,15 +118,17 @@ SIKAP_COLS = [
 # ============================================================
 
 def get_col(df, possible_names):
+    """
+    Find a dataframe column using case-insensitive matching.
+    """
 
     col_map = {
-        str(c).lower().strip(): c
+        str(c).strip().lower(): c
         for c in df.columns
     }
 
     for name in possible_names:
-
-        key = str(name).lower().strip()
+        key = str(name).strip().lower()
 
         if key in col_map:
             return col_map[key]
@@ -59,115 +137,164 @@ def get_col(df, possible_names):
 
 
 # ============================================================
-# CLEANING
+# GENERAL CLEANING
 # ============================================================
 
-def clean_service_no(value):
-
-    if pd.isna(value):
-        return ""
-
-    n = str(value).strip().upper()
-
-    if n in {
-        "",
-        "NAN",
-        "NONE",
-        "NULL"
-    }:
-        return ""
-
-    return n
-
-
 def clean_filename(value):
-
     name = str(value).strip().upper()
 
     name = re.sub(
         r'[\\/:*?"<>|]',
-        " ",
+        ' ',
         name
     )
 
-    name = " ".join(name.split())
+    name = ' '.join(name.split())
 
-    return name if name else "OUTPUT"
+    return name if name else 'OUTPUT'
 
 
-# ============================================================
-# KOD HELPERS
-# ============================================================
-
-def digits_only(value):
-
+def clean_service_no(value):
     if pd.isna(value):
-        return ""
+        return ''
 
-    value = str(value).strip()
+    value = str(value).strip().upper()
 
-    if value.lower() in {
-        "",
-        "nan",
-        "none",
-        "null"
+    if value in {
+        '',
+        'NAN',
+        'NONE',
+        'NULL',
+        'N/A',
+        '#N/A'
     }:
-        return ""
+        return ''
 
-    return re.sub(
-        r"\D",
-        "",
-        value.split(".")[0]
-    )
+    return value
 
 
-def numeric_sort_key(value):
-
-    digits = digits_only(value)
-
-    if not digits:
-        return -1
-
-    try:
-        return int(digits)
-    except Exception:
-        return -1
-
+# ============================================================
+# KOD FORMATTING
+# ============================================================
 
 def format_kod_dm(value):
+    """
+    Converts:
 
-    kod = digits_only(value)
+        0821201
+        821201
+        082/12/01
+
+    into:
+
+        082/12/01
+    """
+
+    if pd.isna(value):
+        return ''
+
+    kod = str(value).strip()
+
+    if kod in {
+        '',
+        'NONE',
+        'NAN',
+        'NULL',
+        'N/A',
+        '#N/A'
+    }:
+        return ''
+
+    # Remove Excel-style decimal suffix.
+    if '.' in kod:
+        kod = kod.split('.')[0]
+
+    # Already formatted.
+    if '/' in kod:
+        parts = kod.split('/')
+
+        if len(parts) == 3:
+            return (
+                parts[0].zfill(3)
+                + '/'
+                + parts[1].zfill(2)
+                + '/'
+                + parts[2].zfill(2)
+            )
+
+    # Digits only.
+    kod = re.sub(r'\D', '', kod)
 
     if not kod:
-        return ""
+        return ''
 
     kod = kod.zfill(7)
 
     return (
-        f"{kod[:3]}/"
-        f"{kod[3:5]}/"
-        f"{kod[5:]}"
+        kod[:3]
+        + '/'
+        + kod[3:5]
+        + '/'
+        + kod[5:7]
     )
 
 
-def format_kod_dun(value):
+def kod_dun_from_dm(kod_dm):
+    """
+    082/12/01 -> 082/12
+    """
 
-    kod = digits_only(value)
-
-    if not kod:
-        return ""
-
-    return kod
-
-
-def format_kod_parlimen(value):
-
-    kod = digits_only(value)
+    kod = format_kod_dm(kod_dm)
 
     if not kod:
-        return ""
+        return ''
 
-    return kod
+    parts = kod.split('/')
+
+    if len(parts) != 3:
+        return ''
+
+    return f'{parts[0]}/{parts[1]}'
+
+
+def dun_sort_key(value):
+    """
+    Sort DUN numerically where possible.
+    """
+
+    value = str(value).strip()
+
+    digits = re.sub(r'\D', '', value)
+
+    if digits:
+        try:
+            return int(digits)
+        except Exception:
+            pass
+
+    return 999999
+
+
+def dm_sort_key(value):
+    """
+    Sort DM numerically by the final component.
+    """
+
+    kod = format_kod_dm(value)
+
+    if not kod:
+        return 999999
+
+    parts = kod.split('/')
+
+    try:
+        return (
+            int(parts[0]),
+            int(parts[1]),
+            int(parts[2])
+        )
+    except Exception:
+        return (999999, 999999, 999999)
 
 
 # ============================================================
@@ -177,61 +304,61 @@ def format_kod_parlimen(value):
 def normalise_race(value):
 
     if pd.isna(value):
-        return "LAIN-LAIN"
+        return 'LAIN-LAIN'
 
     race = str(value).strip().upper()
 
     if race in {
-        "MELAYU",
-        "CINA",
-        "INDIA"
+        'MELAYU',
+        'CINA',
+        'INDIA'
     }:
         return race
 
-    return "LAIN-LAIN"
+    return 'LAIN-LAIN'
 
 
 def normalise_sikap(value):
 
     if pd.isna(value):
-        return ""
+        return None
 
     sikap = str(value).strip().upper()
 
     if sikap in {
-        "KELABU-LAMA",
-        "KELABU-BARU"
+        'KELABU',
+        'KELABU-LAMA',
+        'KELABU-BARU'
     }:
-        return "KELABU"
+        return 'KELABU'
 
-    if sikap in {
-        "PUTIH",
-        "KELABU",
-        "HITAM"
-    }:
-        return sikap
+    if sikap == 'PUTIH':
+        return 'PUTIH'
 
-    return ""
+    if sikap == 'HITAM':
+        return 'HITAM'
+
+    return None
 
 
 # ============================================================
-# SERVICE CLASSIFICATION
+# PENGUNDI AWAL
 # ============================================================
 
-def classify_awal(value):
+def classify_pengundi_awal(value):
 
     n = clean_service_no(value)
 
     if not n:
-        return ""
+        return None
 
-    if n.startswith("G") or n.startswith("RF"):
-        return "POLIS"
+    if n.startswith('G') or n.startswith('RF'):
+        return 'POLIS'
 
-    if n.startswith("T"):
-        return "ASKAR"
+    if n.startswith('T'):
+        return 'ASKAR'
 
-    return "PENGUNDI AWAL"
+    return 'PENGUNDI AWAL'
 
 
 def is_polis(value):
@@ -239,8 +366,8 @@ def is_polis(value):
     n = clean_service_no(value)
 
     return (
-        n.startswith("G")
-        or n.startswith("RF")
+        n.startswith('G')
+        or n.startswith('RF')
     )
 
 
@@ -248,89 +375,44 @@ def is_askar(value):
 
     n = clean_service_no(value)
 
-    return n.startswith("T")
+    return n.startswith('T')
 
 
 # ============================================================
-# AGE
+# AGE GROUP
 # ============================================================
 
-def parse_age(value):
+def get_age_group(value):
+
+    if pd.isna(value):
+        return None
 
     try:
 
-        if pd.isna(value):
-            return None
-
         age = int(float(value))
 
-        return age
+        if 18 <= age <= 21:
+            return '18-21'
+
+        if 22 <= age <= 30:
+            return '22-30'
+
+        if 31 <= age <= 40:
+            return '31-40'
+
+        if 41 <= age <= 50:
+            return '41-50'
+
+        if 51 <= age <= 60:
+            return '51-60'
+
+        if age >= 61:
+            return '61+'
 
     except Exception:
+        pass
 
-        return None
-
-
-def get_age_group(value, age_groups):
-
-    age = parse_age(value)
-
-    if age is None:
-        return ""
-
-    # --------------------------------------------------------
-    # First five groups must be ranges such as:
-    # 18-21
-    # 22-30
-    # 31-40
-    # 41-50
-    # 51-60
-    #
-    # Sixth group can be:
-    # 61+
-    # --------------------------------------------------------
-
-    for index, label in enumerate(age_groups):
-
-        label_clean = str(label).strip()
-
-        # 61+
-        plus_match = re.fullmatch(
-            r"(\d+)\s*\+",
-            label_clean
-        )
-
-        if plus_match:
-
-            minimum = int(
-                plus_match.group(1)
-            )
-
-            if age >= minimum:
-                return label_clean
-
-            continue
-
-        # 18-21
-        range_match = re.fullmatch(
-            r"(\d+)\s*-\s*(\d+)",
-            label_clean
-        )
-
-        if range_match:
-
-            minimum = int(
-                range_match.group(1)
-            )
-
-            maximum = int(
-                range_match.group(2)
-            )
-
-            if minimum <= age <= maximum:
-                return label_clean
-
-    return ""
+    return None
 
 
 # ============================================================
@@ -340,146 +422,116 @@ def get_age_group(value, age_groups):
 def pct(part, total):
 
     if not total:
-        return 0
+        return 0.0
 
     return round(
-        (part / total) * 100,
+        float(part) / float(total) * 100,
         1
     )
 
 
 # ============================================================
-# HEADERS
+# BUILD STATISTICS ROW
 # ============================================================
 
-def build_headers(age_groups):
-
-    headers = [
-        "KOD",
-        "NAMA",
-        "JUMLAH",
-
-        "LELAKI",
-        "LELAKI (%)",
-
-        "PEREMPUAN",
-        "PEREMPUAN (%)",
-
-        "MELAYU",
-        "MELAYU (%)",
-
-        "CINA",
-        "CINA (%)",
-
-        "INDIA",
-        "INDIA (%)",
-
-        "LAIN-LAIN",
-        "LAIN-LAIN (%)"
-    ]
-
-    for age in age_groups:
-
-        headers.append(age)
-        headers.append(f"{age} (%)")
-
-    headers.extend([
-        "UMNO",
-        "UMNO (%)",
-
-        "PKR",
-        "PKR (%)",
-
-        "PAS",
-        "PAS (%)",
-
-        "PPBM",
-        "PPBM (%)",
-
-        "PUTIH",
-        "PUTIH (%)",
-
-        "KELABU",
-        "KELABU (%)",
-
-        "HITAM",
-        "HITAM (%)",
-
-        "PENGUNDI AWAL",
-        "PENGUNDI AWAL (%)",
-
-        "POLIS",
-        "POLIS (%)",
-
-        "PASANGAN POLIS",
-        "PASANGAN POLIS (%)",
-
-        "ASKAR",
-        "ASKAR (%)",
-
-        "PASANGAN ASKAR",
-        "PASANGAN ASKAR (%)"
-    ])
-
-    return headers
-
-
-# ============================================================
-# BUILD ONE SUMMARY ROW
-# ============================================================
-
-def build_summary_row(
-    kod,
-    nama,
+def build_stats_row(
     grp,
-    age_groups
+    kod='',
+    nama='',
 ):
+    """
+    Build one statistics row.
+    """
+
+    # --------------------------------------------------------
+    # TOTAL
+    # --------------------------------------------------------
 
     total = len(grp)
 
+    # --------------------------------------------------------
+    # VALUE COUNTS
+    # --------------------------------------------------------
+
+    race_vc = (
+        grp['race_norm']
+        .value_counts()
+    )
+
+    age_vc = (
+        grp['age_group']
+        .value_counts()
+    )
+
+    party_vc = (
+        grp['party_norm']
+        .value_counts()
+    )
+
+    sikap_vc = (
+        grp['sikap_norm']
+        .value_counts()
+    )
+
+    awal_vc = (
+        grp['awal_type']
+        .value_counts()
+    )
+
+    sex_vc = (
+        grp['jantina_norm']
+        .value_counts()
+    )
+
+    # --------------------------------------------------------
+    # BASE
+    # --------------------------------------------------------
+
     row = {
-        "KOD": kod,
-        "NAMA": nama,
-        "JUMLAH": total
+        'KOD': kod,
+        'NAMA': nama,
+        'JUMLAH': total
     }
 
     # --------------------------------------------------------
-    # SEX
+    # JANTINA
     # --------------------------------------------------------
 
-    sex_vc = grp["_jantina"].value_counts()
+    lelaki = int(
+        sex_vc.get('L', 0)
+    )
 
-    for key, label in [
-        ("L", "LELAKI"),
-        ("P", "PEREMPUAN")
-    ]:
+    perempuan = int(
+        sex_vc.get('P', 0)
+    )
 
-        count = sex_vc.get(
-            key,
-            0
-        )
+    row['LELAKI'] = lelaki
+    row['LELAKI (%)'] = pct(
+        lelaki,
+        total
+    )
 
-        row[label] = count
-        row[f"{label} (%)"] = pct(
-            count,
-            total
-        )
+    row['PEREMPUAN'] = perempuan
+    row['PEREMPUAN (%)'] = pct(
+        perempuan,
+        total
+    )
 
     # --------------------------------------------------------
-    # RACE
+    # KAUM
     # --------------------------------------------------------
-
-    race_vc = grp["_race"].value_counts()
 
     for race in MAIN_RACES:
 
-        count = race_vc.get(
-            race,
-            0
+        count = int(
+            race_vc.get(
+                race,
+                0
+            )
         )
 
         row[race] = count
-        row[f"{race} (%)"] = pct(
+        row[f'{race} (%)'] = pct(
             count,
             total
         )
@@ -488,17 +540,17 @@ def build_summary_row(
     # AGE
     # --------------------------------------------------------
 
-    age_vc = grp["_age_group"].value_counts()
+    for age_group in AGE_GROUPS:
 
-    for age in age_groups:
-
-        count = age_vc.get(
-            age,
-            0
+        count = int(
+            age_vc.get(
+                age_group,
+                0
+            )
         )
 
-        row[age] = count
-        row[f"{age} (%)"] = pct(
+        row[age_group] = count
+        row[f'{age_group} (%)'] = pct(
             count,
             total
         )
@@ -507,17 +559,17 @@ def build_summary_row(
     # PARTY
     # --------------------------------------------------------
 
-    party_vc = grp["_party"].value_counts()
-
     for party in PARTY_COLS:
 
-        count = party_vc.get(
-            party,
-            0
+        count = int(
+            party_vc.get(
+                party,
+                0
+            )
         )
 
         row[party] = count
-        row[f"{party} (%)"] = pct(
+        row[f'{party} (%)'] = pct(
             count,
             total
         )
@@ -526,77 +578,102 @@ def build_summary_row(
     # SIKAP
     # --------------------------------------------------------
 
-    sikap_vc = grp["_sikap"].value_counts()
-
     for sikap in SIKAP_COLS:
 
-        count = sikap_vc.get(
-            sikap,
-            0
+        count = int(
+            sikap_vc.get(
+                sikap,
+                0
+            )
         )
 
         row[sikap] = count
-        row[f"{sikap} (%)"] = pct(
+        row[f'{sikap} (%)'] = pct(
             count,
             total
         )
 
     # --------------------------------------------------------
-    # PENGUNDI AWAL / POLIS / ASKAR
+    # PENGUNDI AWAL
     # --------------------------------------------------------
 
-    awal_vc = grp["_awal_type"].value_counts()
-
-    pengundi_awal = (
-        grp["_NoPerkhidmatan_clean"]
-        .ne("")
+    pengundi_awal = int(
+        grp['NoPerkhidmatan_clean']
+        .ne('')
         .sum()
     )
 
-    polis = awal_vc.get(
-        "POLIS",
-        0
-    )
+    row['PENGUNDI AWAL'] = pengundi_awal
 
-    askar = awal_vc.get(
-        "ASKAR",
-        0
-    )
-
-    pasangan_polis = int(
-        grp["_Pasangan Polis"].sum()
-    )
-
-    pasangan_askar = int(
-        grp["_Pasangan Askar"].sum()
-    )
-
-    row["PENGUNDI AWAL"] = pengundi_awal
-    row["PENGUNDI AWAL (%)"] = pct(
+    row['PENGUNDI AWAL (%)'] = pct(
         pengundi_awal,
         total
     )
 
-    row["POLIS"] = polis
-    row["POLIS (%)"] = pct(
+    # --------------------------------------------------------
+    # POLIS
+    # --------------------------------------------------------
+
+    polis = int(
+        awal_vc.get(
+            'POLIS',
+            0
+        )
+    )
+
+    row['POLIS'] = polis
+
+    row['POLIS (%)'] = pct(
         polis,
         total
     )
 
-    row["PASANGAN POLIS"] = pasangan_polis
-    row["PASANGAN POLIS (%)"] = pct(
+    # --------------------------------------------------------
+    # PASANGAN POLIS
+    # --------------------------------------------------------
+
+    pasangan_polis = int(
+        grp['Pasangan Polis']
+        .sum()
+    )
+
+    row['PASANGAN POLIS'] = pasangan_polis
+
+    row['PASANGAN POLIS (%)'] = pct(
         pasangan_polis,
         total
     )
 
-    row["ASKAR"] = askar
-    row["ASKAR (%)"] = pct(
+    # --------------------------------------------------------
+    # ASKAR
+    # --------------------------------------------------------
+
+    askar = int(
+        awal_vc.get(
+            'ASKAR',
+            0
+        )
+    )
+
+    row['ASKAR'] = askar
+
+    row['ASKAR (%)'] = pct(
         askar,
         total
     )
 
-    row["PASANGAN ASKAR"] = pasangan_askar
-    row["PASANGAN ASKAR (%)"] = pct(
+    # --------------------------------------------------------
+    # PASANGAN ASKAR
+    # --------------------------------------------------------
+
+    pasangan_askar = int(
+        grp['Pasangan Askar']
+        .sum()
+    )
+
+    row['PASANGAN ASKAR'] = pasangan_askar
+
+    row['PASANGAN ASKAR (%)'] = pct(
         pasangan_askar,
         total
     )
@@ -605,579 +682,278 @@ def build_summary_row(
 
 
 # ============================================================
-# BUILD SUMMARY TABLE
-# ============================================================
-
-def build_summary_df(
-    df,
-    group_columns,
-    age_groups,
-    headers,
-    kod_formatter=None
-):
-
-    rows = []
-
-    grouped = df.groupby(
-        group_columns,
-        dropna=False,
-        sort=False
-    )
-
-    for group_values, grp in grouped:
-
-        if not isinstance(
-            group_values,
-            tuple
-        ):
-            group_values = (
-                group_values,
-            )
-
-        kod = group_values[0]
-        nama = group_values[1]
-
-        if pd.isna(kod):
-            kod = ""
-
-        if pd.isna(nama):
-            nama = ""
-
-        kod = str(kod).strip()
-        nama = str(nama).strip()
-
-        if kod_formatter:
-            kod = kod_formatter(kod)
-
-        rows.append(
-            build_summary_row(
-                kod,
-                nama,
-                grp,
-                age_groups
-            )
-        )
-
-    summary_df = pd.DataFrame(rows)
-
-    # --------------------------------------------------------
-    # Ensure all headers exist
-    # --------------------------------------------------------
-
-    for header in headers:
-
-        if header not in summary_df.columns:
-            summary_df[header] = 0
-
-    summary_df = summary_df[headers]
-
-    # --------------------------------------------------------
-    # Sort by KOD
-    # --------------------------------------------------------
-
-    if not summary_df.empty:
-
-        summary_df["_sort"] = (
-            summary_df["KOD"]
-            .apply(numeric_sort_key)
-        )
-
-        summary_df = (
-            summary_df
-            .sort_values(
-                "_sort",
-                kind="stable"
-            )
-            .drop(columns="_sort")
-            .reset_index(drop=True)
-        )
-
-    # --------------------------------------------------------
-    # Total row
-    # --------------------------------------------------------
-
-    summary_df = add_total_row(
-        summary_df,
-        headers
-    )
-
-    return summary_df
-
-
-# ============================================================
 # TOTAL ROW
 # ============================================================
 
-def add_total_row(
+def build_total_row(
     df,
-    headers
+    label=''
 ):
+    """
+    Creates a total row from a dataframe containing
+    statistics rows.
+    """
 
     if df.empty:
 
-        total = 0
+        row = {
+            header: ''
+            for header in HEADERS
+        }
 
-    else:
+        row['NAMA'] = label
 
-        total = pd.to_numeric(
-            df["JUMLAH"],
-            errors="coerce"
-        ).fillna(0).sum()
+        return row
 
-    total_row = {
-        "KOD": "",
-        "NAMA": "",
-        "JUMLAH": total
+    total = int(
+        pd.to_numeric(
+            df['JUMLAH'],
+            errors='coerce'
+        )
+        .fillna(0)
+        .sum()
+    )
+
+    row = {
+        header: ''
+        for header in HEADERS
     }
 
-    for header in headers:
+    row['NAMA'] = label
+    row['JUMLAH'] = total
 
-        if header in {
-            "KOD",
-            "NAMA",
-            "JUMLAH"
-        }:
+    # --------------------------------------------------------
+    # COUNT COLUMNS
+    # --------------------------------------------------------
+
+    count_columns = (
+        [
+            'LELAKI',
+            'PEREMPUAN'
+        ]
+        + MAIN_RACES
+        + AGE_GROUPS
+        + PARTY_COLS
+        + SIKAP_COLS
+        + AWAL_COLS
+    )
+
+    for column in count_columns:
+
+        if column not in df.columns:
+            row[column] = 0
             continue
 
-        if header.endswith("(%)"):
-
-            base = header.replace(
-                " (%)",
-                ""
+        row[column] = int(
+            pd.to_numeric(
+                df[column],
+                errors='coerce'
             )
+            .fillna(0)
+            .sum()
+        )
 
-            numerator = total_row.get(
-                base,
-                0
-            )
+    # --------------------------------------------------------
+    # PERCENTAGE COLUMNS
+    # --------------------------------------------------------
 
-            total_row[header] = pct(
-                numerator,
-                total
-            )
+    for header in HEADERS:
 
-        else:
+        if '(%)' not in header:
+            continue
 
-            if header in df.columns:
+        base = header.replace(
+            ' (%)',
+            ''
+        )
 
-                total_row[header] = (
-                    pd.to_numeric(
-                        df[header],
-                        errors="coerce"
-                    )
-                    .fillna(0)
-                    .sum()
-                )
+        row[header] = pct(
+            row.get(base, 0),
+            total
+        )
 
-            else:
+    return row
 
-                total_row[header] = 0
 
-    return pd.concat(
-        [
-            df,
-            pd.DataFrame([total_row])
-        ],
-        ignore_index=True
+# ============================================================
+# GRAND TOTAL
+# ============================================================
+
+def build_grand_total(df):
+
+    if df.empty:
+        return {
+            header: ''
+            for header in HEADERS
+        }
+
+    return build_total_row(
+        df,
+        'GRAND TOTAL'
     )
 
 
 # ============================================================
-# SHEET FORMATTING
+# EXCEL FORMATTING
 # ============================================================
 
-def write_summary_sheet(
-    ws,
-    summary_df,
-    headers
-):
+def reset_cell_style(cell):
 
-    # --------------------------------------------------------
-    # Colours
-    # --------------------------------------------------------
-
-    BLUE = "9DC3E6"
-    GREEN = "A9D18E"
-    ORANGE = "F4B183"
-    YELLOW = "FFD966"
-    PURPLE = "B4A7D6"
-    WHITE = "D9D9D9"
-
-    thin = Side(
-        style="thin",
-        color="000000"
+    cell.font = Font(
+        name='Calibri',
+        size=11,
+        bold=False
     )
 
-    medium = Side(
-        style="medium",
-        color="000000"
+    cell.border = Border()
+
+    cell.fill = PatternFill(
+        fill_type=None
     )
 
-    # --------------------------------------------------------
-    # Column group colours
-    # --------------------------------------------------------
-
-    group_fill = {}
-
-    # Sex
-    for c in range(4, 8):
-        group_fill[c] = BLUE
-
-    # Race
-    for c in range(8, 16):
-        group_fill[c] = GREEN
-
-    # Age
-    age_start = 16
-    age_end = age_start + (
-        len([
-            h for h in headers
-            if h.endswith(" (%)")
-            and h not in {
-                "LELAKI (%)",
-                "PEREMPUAN (%)",
-                "MELAYU (%)",
-                "CINA (%)",
-                "INDIA (%)",
-                "LAIN-LAIN (%)",
-                "UMNO (%)",
-                "PKR (%)",
-                "PAS (%)",
-                "PPBM (%)",
-                "PUTIH (%)",
-                "KELABU (%)",
-                "HITAM (%)",
-                "PENGUNDI AWAL (%)",
-                "POLIS (%)",
-                "PASANGAN POLIS (%)",
-                "ASKAR (%)",
-                "PASANGAN ASKAR (%)"
-            }
-        ]) * 2)
-
-    # Easier and safer: locate the age section
-    age_columns = []
-
-    for index, header in enumerate(
-        headers,
-        start=1
-    ):
-
-        if index >= 16:
-
-            if header in {
-                "UMNO",
-                "UMNO (%)"
-            }:
-                break
-
-            age_columns.append(index)
-
-    for c in age_columns:
-        group_fill[c] = ORANGE
-
-    # --------------------------------------------------------
-    # Locate remaining groups dynamically
-    # --------------------------------------------------------
-
-    def find_column(name):
-
-        try:
-            return headers.index(name) + 1
-        except ValueError:
-            return None
-
-    party_start = find_column("UMNO")
-
-    if party_start:
-        for c in range(
-            party_start,
-            party_start + 8
-        ):
-            group_fill[c] = YELLOW
-
-    sikap_start = find_column("PUTIH")
-
-    if sikap_start:
-        for c in range(
-            sikap_start,
-            sikap_start + 6
-        ):
-            group_fill[c] = WHITE
-
-    awal_start = find_column(
-        "PENGUNDI AWAL"
+    cell.alignment = Alignment(
+        vertical='center'
     )
 
-    if awal_start:
-        for c in range(
-            awal_start,
-            len(headers) + 1
-        ):
-            group_fill[c] = PURPLE
+
+def format_worksheet(ws):
 
     # --------------------------------------------------------
-    # Group borders
+    # Remove all default styling
     # --------------------------------------------------------
 
-    group_left_edges = {
-        1,
-        4,
-        8,
-        16
-    }
+    for row in ws.iter_rows():
 
-    group_right_edges = {
-        2,
-        7,
-        15
-    }
+        for cell in row:
 
-    # Add dynamic group boundaries
-    if party_start:
-        group_left_edges.add(
-            party_start
-        )
-        group_right_edges.add(
-            party_start + 7
-        )
-
-    if sikap_start:
-        group_left_edges.add(
-            sikap_start
-        )
-        group_right_edges.add(
-            sikap_start + 5
-        )
-
-    if awal_start:
-        group_left_edges.add(
-            awal_start
-        )
-        group_right_edges.add(
-            len(headers)
-        )
+            reset_cell_style(cell)
 
     # --------------------------------------------------------
     # Header
     # --------------------------------------------------------
 
-    for col_idx, header in enumerate(
-        headers,
-        start=1
-    ):
-
-        cell = ws.cell(
-            row=1,
-            column=col_idx,
-            value=header
-        )
+    for cell in ws[1]:
 
         cell.font = Font(
-            name="Calibri",
+            name='Calibri',
             size=11,
-            bold=True
+            bold=False
         )
 
         cell.alignment = Alignment(
-            horizontal="center",
-            vertical="center",
+            horizontal='center',
+            vertical='center',
             wrap_text=True
-        )
-
-        if col_idx in group_fill:
-
-            cell.fill = PatternFill(
-                "solid",
-                fgColor=group_fill[col_idx]
-            )
-
-        left = (
-            medium
-            if col_idx in group_left_edges
-            else thin
-        )
-
-        right = (
-            medium
-            if col_idx in group_right_edges
-            else thin
-        )
-
-        cell.border = Border(
-            left=left,
-            right=right,
-            top=medium,
-            bottom=medium
         )
 
     # --------------------------------------------------------
     # Data
     # --------------------------------------------------------
 
-    total_row_number = (
-        len(summary_df) + 1
-    )
-
-    for row_idx, row in enumerate(
-        summary_df.itertuples(
-            index=False
-        ),
-        start=2
+    for row in ws.iter_rows(
+        min_row=2,
+        max_row=ws.max_row
     ):
 
-        is_total = (
-            row_idx == total_row_number
-        )
+        for cell in row:
 
-        for col_idx, value in enumerate(
-            row,
-            start=1
-        ):
+            header = ws.cell(
+                row=1,
+                column=cell.column
+            ).value
 
-            cell = ws.cell(
-                row=row_idx,
-                column=col_idx,
-                value=value
-            )
-
-            if col_idx == 2:
+            if header == 'NAMA':
 
                 cell.alignment = Alignment(
-                    horizontal="left",
-                    vertical="center"
+                    horizontal='left',
+                    vertical='center'
                 )
 
             else:
 
                 cell.alignment = Alignment(
-                    horizontal="center",
-                    vertical="center"
+                    horizontal='center',
+                    vertical='center'
                 )
-
-            cell.font = Font(
-                name="Calibri",
-                size=11,
-                bold=is_total
-            )
-
-            if (
-                is_total
-                and col_idx in group_fill
-            ):
-
-                cell.fill = PatternFill(
-                    "solid",
-                    fgColor=group_fill[col_idx]
-                )
-
-            left = (
-                medium
-                if col_idx in group_left_edges
-                else thin
-            )
-
-            right = (
-                medium
-                if col_idx in group_right_edges
-                else thin
-            )
-
-            cell.border = Border(
-                left=left,
-                right=right,
-                top=(
-                    medium
-                    if is_total
-                    else thin
-                ),
-                bottom=(
-                    medium
-                    if is_total
-                    else thin
-                )
-            )
-
-            header = headers[
-                col_idx - 1
-            ]
 
             if isinstance(
-                value,
+                cell.value,
                 (int, float)
             ):
 
-                if header.endswith("(%)"):
+                if (
+                    isinstance(header, str)
+                    and '(%)' in header
+                ):
 
-                    cell.number_format = "0.0"
+                    cell.number_format = '0.0'
 
                 else:
 
-                    cell.number_format = "#,##0"
+                    cell.number_format = '#,##0'
 
     # --------------------------------------------------------
     # Column widths
     # --------------------------------------------------------
 
     widths = {
-        "A": 13,
-        "B": 25,
-        "C": 13,
+        'A': 14,
+        'B': 25,
+        'C': 13,
 
-        "D": 11.3,
-        "E": 14.7,
-        "F": 17,
-        "G": 20.6,
+        'D': 11,
+        'E': 13,
+        'F': 14,
+        'G': 16,
 
-        "H": 13.1,
-        "I": 16.6,
-        "J": 10,
-        "K": 13.4,
-        "L": 10.7,
-        "M": 14.1,
-        "N": 14.6,
-        "O": 18.1,
+        'H': 12,
+        'I': 13,
+        'J': 10,
+        'K': 12,
+        'L': 10,
+        'M': 12,
+        'N': 13,
+        'O': 15,
 
-        "P": 10.3,
-        "Q": 13.7,
-        "R": 10.3,
-        "S": 13.7,
-        "T": 10.3,
-        "U": 13.7,
-        "V": 10.3,
-        "W": 13.7,
-        "X": 10.3,
-        "Y": 13.7,
-        "Z": 8.6,
-        "AA": 12,
+        'P': 10,
+        'Q': 13,
+        'R': 10,
+        'S': 13,
+        'T': 10,
+        'U': 13,
+        'V': 10,
+        'W': 13,
+        'X': 10,
+        'Y': 13,
+        'Z': 9,
+        'AA': 12,
 
-        "AB": 9,
-        "AC": 12.4,
-        "AD": 9,
-        "AE": 12.4,
-        "AF": 10.9,
-        "AG": 14.3,
-        "AH": 11.7,
-        "AI": 15.1,
+        'AB': 10,
+        'AC': 12,
+        'AD': 10,
+        'AE': 12,
+        'AF': 10,
+        'AG': 12,
+        'AH': 10,
+        'AI': 12,
 
-        "AJ": 11,
-        "AK": 14.4,
-        "AL": 12.4,
-        "AM": 15.9,
-        "AN": 11.6,
-        "AO": 15,
+        'AJ': 10,
+        'AK': 13,
+        'AL': 10,
+        'AM': 13,
+        'AN': 10,
+        'AO': 13,
 
-        "AP": 21.3,
-        "AQ": 24.9,
-        "AR": 10.6,
-        "AS": 14,
-        "AT": 21.4,
-        "AU": 25,
-
-        "AV": 11.4,
-        "AW": 14.9,
-        "AX": 22.4,
-        "AY": 26
+        'AP': 20,
+        'AQ': 24,
+        'AR': 10,
+        'AS': 13,
+        'AT': 20,
+        'AU': 24,
+        'AV': 10,
+        'AW': 13,
+        'AX': 20,
+        'AY': 24
     }
 
     for column, width in widths.items():
@@ -1187,58 +963,514 @@ def write_summary_sheet(
         ].width = width
 
     # --------------------------------------------------------
-    # Dynamic width for NAMA
+    # Improve NAMA width
     # --------------------------------------------------------
 
-    max_len = 0
+    max_name_length = 0
 
-    for row_idx in range(
+    for row in range(
         1,
         ws.max_row + 1
     ):
 
         value = ws.cell(
-            row=row_idx,
+            row=row,
             column=2
         ).value
 
-        max_len = max(
-            max_len,
-            len(str(value or ""))
+        max_name_length = max(
+            max_name_length,
+            len(str(value or ''))
         )
 
-    ws.column_dimensions["B"].width = min(
-        max_len + 4,
-        60
+    ws.column_dimensions['B'].width = min(
+        max_name_length + 4,
+        40
     )
 
     # --------------------------------------------------------
-    # General worksheet settings
+    # Row heights
     # --------------------------------------------------------
 
-    ws.row_dimensions[1].height = 15.75
+    ws.row_dimensions[1].height = 30
 
-    ws.freeze_panes = "A2"
+    for row in range(
+        2,
+        ws.max_row + 1
+    ):
+
+        # Blank separator rows remain compact.
+        if all(
+            ws.cell(
+                row=row,
+                column=column
+            ).value in ('', None)
+            for column in range(
+                1,
+                ws.max_column + 1
+            )
+        ):
+
+            ws.row_dimensions[row].height = 8
+
+        else:
+
+            ws.row_dimensions[row].height = 22
 
     # --------------------------------------------------------
-    # Page setup
+    # Freeze
     # --------------------------------------------------------
 
-    ws.page_setup.orientation = "landscape"
-    ws.page_setup.paperSize = (
-        ws.PAPERSIZE_A4
+    ws.freeze_panes = 'A2'
+
+    # --------------------------------------------------------
+    # Auto filter
+    # --------------------------------------------------------
+
+    ws.auto_filter.ref = (
+        f'A1:AY{ws.max_row}'
     )
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
 
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
 
-    ws.page_margins.left = 0.25
-    ws.page_margins.right = 0.25
-    ws.page_margins.top = 0.5
-    ws.page_margins.bottom = 0.5
-    ws.page_margins.header = 0.2
-    ws.page_margins.footer = 0.2
+# ============================================================
+# WRITE DATAFRAME
+# ============================================================
+
+def write_dataframe(
+    ws,
+    df
+):
+
+    # Always use exact HEADERS order.
+    df = df.reindex(
+        columns=HEADERS,
+        fill_value=''
+    )
+
+    # Header.
+    for column_index, header in enumerate(
+        HEADERS,
+        start=1
+    ):
+
+        ws.cell(
+            row=1,
+            column=column_index,
+            value=header
+        )
+
+    # Data.
+    for row_index, row in enumerate(
+        df.itertuples(
+            index=False,
+            name=None
+        ),
+        start=2
+    ):
+
+        for column_index, value in enumerate(
+            row,
+            start=1
+        ):
+
+            ws.cell(
+                row=row_index,
+                column=column_index,
+                value=value
+            )
+
+    format_worksheet(ws)
+
+
+# ============================================================
+# BUILD PARLIMEN DATA
+# ============================================================
+
+def build_parlimen_dataframe(
+    final_df
+):
+
+    rows = []
+
+    grouped = final_df.groupby(
+        [
+            '_KOD_PARLIMEN',
+            '_NAMA_PARLIMEN'
+        ],
+        dropna=False,
+        sort=False
+    )
+
+    for (
+        kod_parlimen,
+        nama_parlimen
+    ), grp in grouped:
+
+        row = build_stats_row(
+            grp,
+            kod=str(
+                kod_parlimen
+            ).strip(),
+            nama=str(
+                nama_parlimen
+            ).strip()
+        )
+
+        rows.append(row)
+
+    if not rows:
+        return pd.DataFrame(
+            columns=HEADERS
+        )
+
+    df = pd.DataFrame(rows)
+
+    # --------------------------------------------------------
+    # Sort Parliament
+    # --------------------------------------------------------
+
+    df['_SORT'] = (
+        df['KOD']
+        .astype(str)
+        .str.extract(
+            r'(\d+)'
+        )[0]
+        .fillna('999999')
+        .astype(int)
+    )
+
+    df = (
+        df.sort_values(
+            '_SORT'
+        )
+        .drop(
+            columns=['_SORT']
+        )
+        .reset_index(
+            drop=True
+        )
+    )
+
+    # --------------------------------------------------------
+    # Grand total
+    # --------------------------------------------------------
+
+    grand = build_grand_total(df)
+
+    df = pd.concat(
+        [
+            df,
+            pd.DataFrame([grand])
+        ],
+        ignore_index=True
+    )
+
+    return df.reindex(
+        columns=HEADERS
+    )
+
+
+# ============================================================
+# BUILD DM DATA GROUPED BY DUN
+# ============================================================
+
+def build_dm_grouped_dataframe(
+    final_df
+):
+    """
+    Creates:
+
+        DUN 12 DM 01
+        DUN 12 DM 02
+        DUN 12 TOTAL
+        blank
+
+        DUN 13 DM 01
+        DUN 13 DM 02
+        DUN 13 TOTAL
+        blank
+
+        ...
+
+        GRAND TOTAL
+    """
+
+    output_rows = []
+
+    # --------------------------------------------------------
+    # Get unique DUNs
+    # --------------------------------------------------------
+
+    dun_groups = (
+        final_df[
+            [
+                '_KOD_DUN',
+                '_NAMA_DUN'
+            ]
+        ]
+        .drop_duplicates()
+        .copy()
+    )
+
+    dun_groups = dun_groups[
+        dun_groups['_KOD_DUN'].ne('')
+    ]
+
+    dun_groups = dun_groups[
+        dun_groups['_NAMA_DUN'].ne('')
+    ]
+
+    # --------------------------------------------------------
+    # Sort DUN
+    # --------------------------------------------------------
+
+    dun_groups['_SORT'] = (
+        dun_groups['_KOD_DUN']
+        .apply(dun_sort_key)
+    )
+
+    dun_groups = (
+        dun_groups
+        .sort_values(
+            '_SORT'
+        )
+        .drop(
+            columns=['_SORT']
+        )
+    )
+
+    # --------------------------------------------------------
+    # Process every DUN
+    # --------------------------------------------------------
+
+    for (
+        kod_dun,
+        nama_dun
+    ) in dun_groups.itertuples(
+        index=False,
+        name=None
+    ):
+
+        kod_dun = str(
+            kod_dun
+        ).strip()
+
+        nama_dun = str(
+            nama_dun
+        ).strip()
+
+        dun_df = final_df[
+            (
+                final_df['_KOD_DUN']
+                == kod_dun
+            )
+            &
+            (
+                final_df['_NAMA_DUN']
+                == nama_dun
+            )
+        ].copy()
+
+        if dun_df.empty:
+            continue
+
+        # ----------------------------------------------------
+        # DM GROUPS INSIDE DUN
+        # ----------------------------------------------------
+
+        dm_groups = (
+            dun_df[
+                [
+                    '_KOD_DM',
+                    '_NAMA_DM'
+                ]
+            ]
+            .drop_duplicates()
+            .copy()
+        )
+
+        dm_groups['_SORT'] = (
+            dm_groups['_KOD_DM']
+            .apply(dm_sort_key)
+        )
+
+        dm_groups = (
+            dm_groups
+            .sort_values(
+                '_SORT'
+            )
+            .drop(
+                columns=['_SORT']
+            )
+        )
+
+        # ----------------------------------------------------
+        # DM ROWS
+        # ----------------------------------------------------
+
+        dun_dm_rows = []
+
+        for (
+            kod_dm,
+            nama_dm
+        ) in dm_groups.itertuples(
+            index=False,
+            name=None
+        ):
+
+            kod_dm = str(
+                kod_dm
+            ).strip()
+
+            nama_dm = str(
+                nama_dm
+            ).strip()
+
+            dm_df = dun_df[
+                (
+                    dun_df['_KOD_DM']
+                    == kod_dm
+                )
+                &
+                (
+                    dun_df['_NAMA_DM']
+                    == nama_dm
+                )
+            ]
+
+            if dm_df.empty:
+                continue
+
+            formatted_kod = format_kod_dm(
+                kod_dm
+            )
+
+            row = build_stats_row(
+                dm_df,
+                kod=formatted_kod,
+                nama=nama_dm
+            )
+
+            dun_dm_rows.append(row)
+
+        # ----------------------------------------------------
+        # Add DM rows
+        # ----------------------------------------------------
+
+        output_rows.extend(
+            dun_dm_rows
+        )
+
+        # ----------------------------------------------------
+        # DUN TOTAL
+        # ----------------------------------------------------
+
+        if dun_dm_rows:
+
+            dun_dm_df = pd.DataFrame(
+                dun_dm_rows
+            )
+
+            dun_total = build_total_row(
+                dun_dm_df,
+                label=nama_dun
+            )
+
+            # Use DUN code in KOD.
+            dun_total['KOD'] = (
+                kod_dun
+            )
+
+            output_rows.append(
+                dun_total
+            )
+
+        # ----------------------------------------------------
+        # Blank separator
+        # ----------------------------------------------------
+
+        output_rows.append(
+            {
+                header: ''
+                for header in HEADERS
+            }
+        )
+
+    # --------------------------------------------------------
+    # GRAND TOTAL
+    # --------------------------------------------------------
+
+    all_dm_rows = [
+        row
+        for row in output_rows
+        if row.get('JUMLAH', '') not in (
+            '',
+            None
+        )
+        and row.get('NAMA', '') not in (
+            '',
+            None
+        )
+    ]
+
+    # Only use actual DM rows for grand total.
+    actual_dm_rows = []
+
+    for row in all_dm_rows:
+
+        kod = str(
+            row.get(
+                'KOD',
+                ''
+            )
+        )
+
+        # A DM code has 3 components.
+        if kod.count('/') == 2:
+
+            actual_dm_rows.append(
+                row
+            )
+
+    if actual_dm_rows:
+
+        actual_dm_df = pd.DataFrame(
+            actual_dm_rows
+        )
+
+        grand = build_grand_total(
+            actual_dm_df
+        )
+
+        # Ensure it is clearly the grand total.
+        grand['KOD'] = ''
+        grand['NAMA'] = 'GRAND TOTAL'
+
+        # Remove trailing separator before grand total.
+        while (
+            output_rows
+            and output_rows[-1].get(
+                'JUMLAH',
+                ''
+            ) in ('', None)
+            and output_rows[-1].get(
+                'NAMA',
+                ''
+            ) in ('', None)
+        ):
+
+            output_rows.pop()
+
+        output_rows.append(
+            grand
+        )
+
+    return pd.DataFrame(
+        output_rows
+    ).reindex(
+        columns=HEADERS,
+        fill_value=''
+    )
 
 
 # ============================================================
@@ -1247,10 +1479,15 @@ def write_summary_sheet(
 
 def prepare_dataframe(
     df,
-    age_groups
+    fname,
+    logs
 ):
 
     df = df.copy()
+
+    # --------------------------------------------------------
+    # Clean headers
+    # --------------------------------------------------------
 
     df.columns = [
         str(c).strip()
@@ -1258,144 +1495,154 @@ def prepare_dataframe(
     ]
 
     # --------------------------------------------------------
-    # Parliament
+    # Find columns
     # --------------------------------------------------------
+
+    col_nokp = get_col(
+        df,
+        [
+            'nokp',
+            'NoKp',
+            'NO KP',
+            'IC'
+        ]
+    )
 
     col_kod_parlimen = get_col(
         df,
         [
-            "kod_parlimen",
-            "KOD PARLIMEN",
-            "KODPARLIMEN"
+            'kod_parlimen',
+            'KOD PARLIMEN',
+            'KodParlimen'
         ]
     )
 
     col_nama_parlimen = get_col(
         df,
         [
-            "nama_parlimen",
-            "NamaParlimen",
-            "NAMA PARLIMEN"
+            'nama_parlimen',
+            'NAMA PARLIMEN',
+            'NamaParlimen'
         ]
     )
-
-    # --------------------------------------------------------
-    # DUN
-    # --------------------------------------------------------
 
     col_kod_dun = get_col(
         df,
         [
-            "kod_dun",
-            "KOD DUN",
-            "KODDUN"
+            'kod_dun',
+            'KOD DUN',
+            'KodDUN'
         ]
     )
 
     col_nama_dun = get_col(
         df,
         [
-            "nama_dun",
-            "DUN",
-            "NAMA DUN"
+            'nama_dun',
+            'NAMA DUN',
+            'DUN',
+            'NamaDUN'
         ]
     )
 
-    # --------------------------------------------------------
-    # DM
-    # --------------------------------------------------------
-
-    col_dm = get_col(
+    col_kod_dm = get_col(
         df,
         [
-            "KOD DM",
-            "kod_dm"
+            'kod_dm',
+            'KOD DM',
+            'KodDM'
         ]
     )
 
     col_nama_dm = get_col(
         df,
         [
-            "NamaDM",
-            "nama_dm",
-            "NAMA DM"
+            'nama_dm',
+            'NAMA DM',
+            'NamaDM'
         ]
     )
-
-    # --------------------------------------------------------
-    # Other columns
-    # --------------------------------------------------------
 
     col_jantina = get_col(
         df,
         [
-            "JANTINA",
-            "jantina"
+            'jantina',
+            'JANTINA'
         ]
     )
 
-    col_bangsa = get_col(
+    col_race = get_col(
         df,
         [
-            "kaum",
-            "BANGSA",
-            "kategori_kaum"
+            'kategori_kaum',
+            'KATEGORI_KAUM',
+            'kaum',
+            'KAUM',
+            'BANGSA'
         ]
     )
 
     col_umur = get_col(
         df,
         [
-            "UMUR",
-            "umur"
+            'umur',
+            'UMUR'
         ]
     )
 
     col_party = get_col(
         df,
         [
-            "party",
-            "PARTY"
+            'party',
+            'PARTY',
+            'parti'
         ]
     )
 
     col_sikap = get_col(
         df,
         [
-            "CATATAN",
-            "sikap"
+            'sikap',
+            'SIKAP',
+            'catatan',
+            'CATATAN'
         ]
     )
 
-    col_no = get_col(
+    col_service = get_col(
         df,
         [
-            "NoPerkhidmatan",
-            "noperkhidmatan"
+            'noperkhidmatan',
+            'NoPerkhidmatan',
+            'NO PERKHIDMATAN'
         ]
     )
 
     col_pasangan = get_col(
         df,
         [
-            "NoKPPasangan",
-            "NoPerkhidmatanPasangan",
-            "noperkhidmatanpasangan"
+            'noperkhidmatanpasangan',
+            'NoPerkhidmatanPasangan',
+            'NoKPPasangan',
+            'NOKP PASANGAN'
         ]
     )
 
     required = {
-        "kod_parlimen": col_kod_parlimen,
-        "nama_parlimen": col_nama_parlimen,
-        "kod_dun": col_kod_dun,
-        "nama_dun / DUN": col_nama_dun,
-        "KOD DM": col_dm,
-        "NamaDM": col_nama_dm,
-        "JANTINA": col_jantina,
-        "BANGSA": col_bangsa,
-        "UMUR": col_umur,
-        "NoPerkhidmatan": col_no,
-        "NoKPPasangan": col_pasangan
+        'NoKp': col_nokp,
+        'KOD PARLIMEN': col_kod_parlimen,
+        'NAMA PARLIMEN': col_nama_parlimen,
+        'KOD DUN': col_kod_dun,
+        'NAMA DUN': col_nama_dun,
+        'KOD DM': col_kod_dm,
+        'NAMA DM': col_nama_dm,
+        'JANTINA': col_jantina,
+        'KAUM': col_race,
+        'UMUR': col_umur,
+        'PARTY': col_party,
+        'SIKAP': col_sikap,
+        'NoPerkhidmatan': col_service,
+        'NoKPPasangan': col_pasangan
     }
 
     missing = [
@@ -1407,181 +1654,180 @@ def prepare_dataframe(
     if missing:
 
         raise ValueError(
-            "Missing required columns: "
-            + ", ".join(missing)
+            f'{fname}: missing required columns: '
+            + ', '.join(missing)
         )
 
     # --------------------------------------------------------
-    # Hierarchy
+    # Internal columns
     # --------------------------------------------------------
 
-    df["_KOD PARLIMEN"] = (
+    work = pd.DataFrame()
+
+    work['_NOKP'] = (
+        df[col_nokp]
+        .fillna('')
+        .astype(str)
+        .str.strip()
+    )
+
+    work['_KOD_PARLIMEN'] = (
         df[col_kod_parlimen]
-        .fillna("")
+        .fillna('')
         .astype(str)
         .str.strip()
     )
 
-    df["_NAMA PARLIMEN"] = (
+    work['_NAMA_PARLIMEN'] = (
         df[col_nama_parlimen]
-        .fillna("")
+        .fillna('')
         .astype(str)
         .str.strip()
-        .str.upper()
     )
 
-    df["_KOD DUN"] = (
+    work['_KOD_DUN'] = (
         df[col_kod_dun]
-        .fillna("")
+        .fillna('')
         .astype(str)
         .str.strip()
     )
 
-    df["_NAMA DUN"] = (
+    work['_NAMA_DUN'] = (
         df[col_nama_dun]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .str.upper()
-    )
-
-    df["_KOD DM"] = (
-        df[col_dm]
-        .fillna("")
+        .fillna('')
         .astype(str)
         .str.strip()
     )
 
-    df["_NAMA DM"] = (
+    work['_KOD_DM'] = (
+        df[col_kod_dm]
+        .fillna('')
+        .astype(str)
+        .str.strip()
+    )
+
+    work['_NAMA_DM'] = (
         df[col_nama_dm]
-        .fillna("")
+        .fillna('')
         .astype(str)
         .str.strip()
     )
 
-    # --------------------------------------------------------
-    # Demographic fields
-    # --------------------------------------------------------
-
-    df["_jantina"] = (
+    work['jantina_norm'] = (
         df[col_jantina]
-        .fillna("")
+        .fillna('')
         .astype(str)
         .str.strip()
         .str.upper()
     )
 
-    df["_race"] = (
-        df[col_bangsa]
+    work['race_norm'] = (
+        df[col_race]
         .apply(normalise_race)
     )
 
-    df["_age_group"] = (
+    work['age_group'] = (
         df[col_umur]
-        .apply(
-            lambda x:
-            get_age_group(
-                x,
-                age_groups
-            )
-        )
+        .apply(get_age_group)
     )
 
-    # --------------------------------------------------------
-    # Party
-    # --------------------------------------------------------
+    work['party_norm'] = (
+        df[col_party]
+        .fillna('')
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
 
-    if col_party:
-
-        df["_party"] = (
-            df[col_party]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-            .str.upper()
-        )
-
-    else:
-
-        df["_party"] = ""
-
-    # --------------------------------------------------------
-    # Sikap
-    # --------------------------------------------------------
-
-    if col_sikap:
-
-        df["_sikap"] = (
-            df[col_sikap]
-            .apply(normalise_sikap)
-        )
-
-    else:
-
-        df["_sikap"] = ""
+    work['sikap_norm'] = (
+        df[col_sikap]
+        .apply(normalise_sikap)
+    )
 
     # --------------------------------------------------------
     # Service numbers
     # --------------------------------------------------------
 
-    df["_NoPerkhidmatan_clean"] = (
-        df[col_no]
+    work['NoPerkhidmatan_clean'] = (
+        df[col_service]
         .apply(clean_service_no)
     )
 
-    df["_NoKPPasangan_clean"] = (
+    work['NoPerkhidmatanPasangan_clean'] = (
         df[col_pasangan]
         .apply(clean_service_no)
     )
 
-    # --------------------------------------------------------
-    # Classification
-    # --------------------------------------------------------
-
-    df["_awal_type"] = (
-        df["_NoPerkhidmatan_clean"]
-        .apply(classify_awal)
-    )
-
-    df["_Pasangan Polis"] = (
-        df["_NoKPPasangan_clean"]
+    work['awal_type'] = (
+        work['NoPerkhidmatan_clean']
         .apply(
-            lambda x:
-            1 if is_polis(x) else 0
+            classify_pengundi_awal
         )
     )
 
-    df["_Pasangan Askar"] = (
-        df["_NoKPPasangan_clean"]
+    work['Pasangan Polis'] = (
+        work[
+            'NoPerkhidmatanPasangan_clean'
+        ]
         .apply(
             lambda x:
-            1 if is_askar(x) else 0
+                1
+                if is_polis(x)
+                else 0
         )
     )
 
-    return df
+    work['Pasangan Askar'] = (
+        work[
+            'NoPerkhidmatanPasangan_clean'
+        ]
+        .apply(
+            lambda x:
+                1
+                if is_askar(x)
+                else 0
+        )
+    )
+
+    # --------------------------------------------------------
+    # Clean invalid structural rows
+    # --------------------------------------------------------
+
+    work = work[
+        work['_NOKP'].ne('')
+    ].copy()
+
+    work = work[
+        work['_KOD_PARLIMEN'].ne('')
+    ].copy()
+
+    work = work[
+        work['_KOD_DUN'].ne('')
+    ].copy()
+
+    work = work[
+        work['_KOD_DM'].ne('')
+    ].copy()
+
+    logs.append(
+        f'{fname}: {len(work):,} valid rows'
+    )
+
+    return work
 
 
 # ============================================================
-# GENERATE
+# MAIN GENERATOR
 # ============================================================
 
-def generate_demografik(
-    uploaded_files,
-    age_groups
-):
-
-    logs = []
+def generate_demografik(uploaded_files):
 
     all_data = []
+    logs = []
 
-    headers = build_headers(
-        age_groups
-    )
-
-    # ========================================================
-    # READ FILES
-    # ========================================================
+    # --------------------------------------------------------
+    # Read every uploaded file
+    # --------------------------------------------------------
 
     for uploaded_file in uploaded_files:
 
@@ -1589,151 +1835,188 @@ def generate_demografik(
 
         try:
 
+            uploaded_file.seek(0)
+
             df = pd.read_excel(
                 uploaded_file,
                 dtype=str
             )
 
+            if df.empty:
+
+                logs.append(
+                    f'{fname}: skipped — empty file'
+                )
+
+                continue
+
             prepared = prepare_dataframe(
                 df,
-                age_groups
+                fname,
+                logs
             )
 
-            all_data.append(
-                prepared
-            )
+            if not prepared.empty:
 
-            logs.append(
-                f"Loaded {fname}: "
-                f"{len(prepared):,} rows"
-            )
+                all_data.append(
+                    prepared
+                )
 
         except Exception as e:
 
             logs.append(
-                f"Error reading {fname}: "
-                f"{e}"
+                f'{fname}: ERROR — {e}'
             )
+
+    # --------------------------------------------------------
+    # No data
+    # --------------------------------------------------------
 
     if not all_data:
 
         raise ValueError(
-            "No valid data loaded.\n"
-            + "\n".join(logs)
+            'No valid data could be processed.\n\n'
+            + '\n'.join(logs)
         )
+
+    # --------------------------------------------------------
+    # Combine files
+    # --------------------------------------------------------
 
     final_df = pd.concat(
         all_data,
         ignore_index=True
     )
 
+    logs.append(
+        f'Total combined rows: '
+        f'{len(final_df):,}'
+    )
+
     # ========================================================
-    # WORKBOOK
+    # PARLIMEN
+    # ========================================================
+
+    df_parlimen = (
+        build_parlimen_dataframe(
+            final_df
+        )
+    )
+
+    # ========================================================
+    # DM GROUPED BY DUN
+    # ========================================================
+
+    df_dm = (
+        build_dm_grouped_dataframe(
+            final_df
+        )
+    )
+
+    # ========================================================
+    # CREATE WORKBOOK
     # ========================================================
 
     wb = Workbook()
 
-    # Remove default sheet
+    # Remove default worksheet.
     default_ws = wb.active
-    wb.remove(default_ws)
 
-    # ========================================================
-    # 1. PARLIMEN
-    # ========================================================
+    wb.remove(
+        default_ws
+    )
+
+    # --------------------------------------------------------
+    # PARLIMEN
+    # --------------------------------------------------------
 
     ws_parlimen = wb.create_sheet(
-        title="PARLIMEN"
+        title='PARLIMEN'
     )
 
-    parlimen_df = build_summary_df(
-        final_df,
-        [
-            "_KOD PARLIMEN",
-            "_NAMA PARLIMEN"
-        ],
-        age_groups,
-        headers,
-        kod_formatter=format_kod_parlimen
-    )
-
-    write_summary_sheet(
+    write_dataframe(
         ws_parlimen,
-        parlimen_df,
-        headers
+        df_parlimen
     )
 
-    logs.append(
-        f"PARLIMEN worksheet: "
-        f"{len(parlimen_df) - 1:,} Parliament(s)"
-    )
-
-    # ========================================================
-    # 2. DUN
-    # ========================================================
-
-    ws_dun = wb.create_sheet(
-        title="DUN"
-    )
-
-    dun_df = build_summary_df(
-        final_df,
-        [
-            "_KOD DUN",
-            "_NAMA DUN"
-        ],
-        age_groups,
-        headers,
-        kod_formatter=format_kod_dun
-    )
-
-    write_summary_sheet(
-        ws_dun,
-        dun_df,
-        headers
-    )
-
-    logs.append(
-        f"DUN worksheet: "
-        f"{len(dun_df) - 1:,} DUN(s)"
-    )
-
-    # ========================================================
-    # 3. DM
-    # ========================================================
+    # --------------------------------------------------------
+    # DM
+    # --------------------------------------------------------
 
     ws_dm = wb.create_sheet(
-        title="DM"
+        title='DM'
     )
 
-    dm_df = build_summary_df(
-        final_df,
-        [
-            "_KOD DM",
-            "_NAMA DM"
-        ],
-        age_groups,
-        headers,
-        kod_formatter=format_kod_dm
-    )
-
-    write_summary_sheet(
+    write_dataframe(
         ws_dm,
-        dm_df,
-        headers
-    )
-
-    logs.append(
-        f"DM worksheet: "
-        f"{len(dm_df) - 1:,} DM(s)"
+        df_dm
     )
 
     # ========================================================
-    # SAVE
+    # ADD LIGHT TABLE STYLE
+    # ========================================================
+    #
+    # Important:
+    # TableStyleLight1 is used without custom header styling.
+    # This keeps the workbook clean and avoids manually bolding
+    # the headers.
+    #
+    # The DM sheet contains separator rows and DUN total rows,
+    # so it is deliberately NOT converted into one Excel Table.
+    #
+    # ========================================================
+
+    # PARLIMEN table only.
+    if ws_parlimen.max_row >= 2:
+
+        table_ref = (
+            f'A1:AY{ws_parlimen.max_row}'
+        )
+
+        table = Table(
+            displayName='ParlimenStats',
+            ref=table_ref
+        )
+
+        style = TableStyleInfo(
+            name='TableStyleLight1',
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=False,
+            showColumnStripes=False
+        )
+
+        table.tableStyleInfo = style
+
+        ws_parlimen.add_table(
+            table
+        )
+
+    # ========================================================
+    # FINAL CLEANUP
+    # ========================================================
+
+    for ws in wb.worksheets:
+
+        for row in ws.iter_rows():
+
+            for cell in row:
+
+                cell.font = Font(
+                    name='Calibri',
+                    size=11,
+                    bold=False
+                )
+
+    # ========================================================
+    # SAVE TO MEMORY
     # ========================================================
 
     output = io.BytesIO()
 
-    wb.save(output)
+    wb.save(
+        output
+    )
 
     output.seek(0)
 
@@ -1741,28 +2024,47 @@ def generate_demografik(
     # OUTPUT NAME
     # ========================================================
 
-    if len(uploaded_files) == 1:
+    # Try to use first DUN name if available.
+    dun_names = (
+        final_df['_NAMA_DUN']
+        .dropna()
+        .astype(str)
+        .str.strip()
+    )
 
-        source_name = uploaded_files[0].name
+    dun_names = [
+        x
+        for x in dun_names.unique()
+        if x
+    ]
 
-        source_name = re.sub(
-            r"\.(xlsx|xls)$",
-            "",
-            source_name,
-            flags=re.IGNORECASE
-        )
+    if len(dun_names) == 1:
 
         out_name = (
-            f"DEMOGRAFIK "
-            f"{clean_filename(source_name)}.xlsx"
+            f'DEMOGRAFIK '
+            f'{clean_filename(dun_names[0])}.xlsx'
         )
 
     else:
 
         out_name = (
-            "DEMOGRAFIK "
-            f"({len(uploaded_files)} FILES).xlsx"
+            f'DEMOGRAFIK '
+            f'({len(dun_names)} DUN).xlsx'
         )
+
+    logs.append(
+        'Workbook created with sheets: '
+        'PARLIMEN, DM'
+    )
+
+    logs.append(
+        'DUN worksheet removed.'
+    )
+
+    logs.append(
+        'DM worksheet grouped by DUN with '
+        'DUN totals and separator rows.'
+    )
 
     return (
         output.getvalue(),
