@@ -10,6 +10,7 @@ st.set_page_config(
 
 st.title("📊 DEMOGRAFIK Generator")
 
+
 uploaded_files = st.file_uploader(
     "Upload Excel file(s)",
     type=["xlsx", "xls"],
@@ -104,41 +105,50 @@ if uploaded_files:
             # ------------------------------------------------
 
             if any(not age for age in age_groups):
-                st.error("All 6 age groups must be filled in.")
+                st.error(
+                    "All 6 age groups must be filled in."
+                )
                 st.stop()
 
             if len(set(age_groups)) != len(age_groups):
-                st.error("Age groups must be unique.")
+                st.error(
+                    "Age groups must be unique."
+                )
                 st.stop()
 
             # ------------------------------------------------
-            # Generate
+            # Generate workbook
             # ------------------------------------------------
 
-            with st.spinner("Generating DEMOGRAFIK..."):
+            excel_bytes, out_name, logs = generate_demografik(
+                uploaded_files,
+                age_groups=age_groups
+            )
 
-                excel_bytes, out_name, logs = generate_demografik(
-                    uploaded_files,
-                    age_groups=age_groups
-                )
+            st.success(
+                f"Generated: {out_name}"
+            )
 
             # ------------------------------------------------
-            # Result
+            # Processing log
             # ------------------------------------------------
-
-            st.success(f"Generated: {out_name}")
 
             with st.expander("Processing log"):
 
                 for log in logs:
                     st.write(log)
 
+            # ------------------------------------------------
+            # Download
+            # ------------------------------------------------
+
             st.download_button(
                 label="Download Excel",
                 data=excel_bytes,
                 file_name=out_name,
                 mime=(
-                    "application/vnd.openxmlformats-officedocument."
+                    "application/"
+                    "vnd.openxmlformats-officedocument."
                     "spreadsheetml.sheet"
                 ),
                 key="dm_stats_download_button"
@@ -146,8 +156,10 @@ if uploaded_files:
 
         except Exception as e:
 
-            st.error(f"Error: {e}")
+            st.error(str(e))
 
 else:
 
-    st.info("Upload one or more Excel files to start.")
+    st.info(
+        "Upload one or more Excel files to start."
+    )
