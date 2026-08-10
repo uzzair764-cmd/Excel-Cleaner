@@ -157,7 +157,12 @@ def format_kod_dun(value):
     if not kod:
         return ""
 
-    return kod
+    kod = kod.zfill(5)
+
+    return (
+        f"{kod[:3]}/"
+        f"{kod[3:5]}"
+    )
 
 
 def format_kod_parlimen(value):
@@ -167,7 +172,7 @@ def format_kod_parlimen(value):
     if not kod:
         return ""
 
-    return kod
+    return kod.zfill(3)
 
 
 # ============================================================
@@ -278,27 +283,12 @@ def get_age_group(value, age_groups):
     if age is None:
         return ""
 
-    # --------------------------------------------------------
-    # CUSTOM AGE GROUP SUPPORT
-    #
-    # Supported formats:
-    #
-    # 18-21
-    # 22-30
-    # 31 - 40
-    # 41–50
-    # 61+
-    #
-    # The groups are interpreted exactly according
-    # to the labels entered by the user in Streamlit.
-    # --------------------------------------------------------
-
     for label in age_groups:
 
         label_clean = str(label).strip()
 
         # ----------------------------------------------------
-        # 61+
+        # Example: 61+
         # ----------------------------------------------------
 
         plus_match = re.fullmatch(
@@ -318,12 +308,11 @@ def get_age_group(value, age_groups):
             continue
 
         # ----------------------------------------------------
-        # 18-21
-        # Also accepts en dash / em dash.
+        # Example: 18-21
         # ----------------------------------------------------
 
         range_match = re.fullmatch(
-            r"(\d+)\s*[-–—]\s*(\d+)",
+            r"(\d+)\s*-\s*(\d+)",
             label_clean
         )
 
@@ -388,14 +377,12 @@ def build_headers(age_groups):
         "LAIN-LAIN (%)"
     ]
 
-    # --------------------------------------------------------
-    # CUSTOM AGE GROUP COLUMNS
-    # --------------------------------------------------------
-
     for age in age_groups:
 
         headers.append(age)
-        headers.append(f"{age} (%)")
+        headers.append(
+            f"{age} (%)"
+        )
 
     headers.extend([
         "UMNO",
@@ -457,9 +444,9 @@ def build_summary_row(
         "JUMLAH": total
     }
 
-    # --------------------------------------------------------
+    # ========================================================
     # SEX
-    # --------------------------------------------------------
+    # ========================================================
 
     sex_vc = grp["_jantina"].value_counts()
 
@@ -480,9 +467,9 @@ def build_summary_row(
             total
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # RACE
-    # --------------------------------------------------------
+    # ========================================================
 
     race_vc = grp["_race"].value_counts()
 
@@ -500,9 +487,9 @@ def build_summary_row(
             total
         )
 
-    # --------------------------------------------------------
-    # CUSTOM AGE GROUPS
-    # --------------------------------------------------------
+    # ========================================================
+    # AGE
+    # ========================================================
 
     age_vc = grp["_age_group"].value_counts()
 
@@ -520,9 +507,9 @@ def build_summary_row(
             total
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # PARTY
-    # --------------------------------------------------------
+    # ========================================================
 
     party_vc = grp["_party"].value_counts()
 
@@ -540,9 +527,9 @@ def build_summary_row(
             total
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # SIKAP
-    # --------------------------------------------------------
+    # ========================================================
 
     sikap_vc = grp["_sikap"].value_counts()
 
@@ -560,9 +547,9 @@ def build_summary_row(
             total
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # PENGUNDI AWAL / POLIS / ASKAR
-    # --------------------------------------------------------
+    # ========================================================
 
     awal_vc = grp["_awal_type"].value_counts()
 
@@ -654,6 +641,7 @@ def build_summary_df(
             group_values,
             tuple
         ):
+
             group_values = (
                 group_values,
             )
@@ -682,7 +670,9 @@ def build_summary_df(
             )
         )
 
-    summary_df = pd.DataFrame(rows)
+    summary_df = pd.DataFrame(
+        rows
+    )
 
     # --------------------------------------------------------
     # Ensure all headers exist
@@ -712,8 +702,12 @@ def build_summary_df(
                 "_sort",
                 kind="stable"
             )
-            .drop(columns="_sort")
-            .reset_index(drop=True)
+            .drop(
+                columns="_sort"
+            )
+            .reset_index(
+                drop=True
+            )
         )
 
     # --------------------------------------------------------
@@ -726,6 +720,249 @@ def build_summary_df(
     )
 
     return summary_df
+
+
+# ============================================================
+# DUN + DM COMBINED SUMMARY
+# ============================================================
+
+def build_dm_with_dun_totals(
+    df,
+    age_groups,
+    headers
+):
+    """
+    Creates ONE worksheet containing:
+
+        DM rows
+        DUN subtotal
+        blank row
+        next DUN DM rows
+        next DUN subtotal
+        ...
+
+    DUN subtotal rows are calculated directly from the
+    underlying records, NOT by averaging DM percentages.
+    """
+
+    output_rows = []
+
+    # ========================================================
+    # GROUP BY DUN
+    # ========================================================
+
+    dun_groups = df.groupby(
+        [
+            "_KOD DUN",
+            "_NAMA DUN"
+        ],
+        dropna=False,
+        sort=False
+    )
+
+    dun_blocks = []
+
+    for (
+        dun_values,
+        dun_grp
+    ) in dun_groups:
+
+        if not isinstance(
+            dun_values,
+            tuple
+        ):
+            dun_values = (
+                dun_values,
+            )
+
+        dun_kod = dun_values[0]
+        dun_name = dun_values[1]
+
+        if pd.isna(dun_kod):
+            dun_kod = ""
+
+        if pd.isna(dun_name):
+            dun_name = ""
+
+        dun_kod = str(
+            dun_kod
+        ).strip()
+
+        dun_name = str(
+            dun_name
+        ).strip()
+
+        # ----------------------------------------------------
+        # DM rows inside this DUN
+        # ----------------------------------------------------
+
+        dm_rows = []
+
+        dm_groups = dun_grp.groupby(
+            [
+                "_KOD DM",
+                "_NAMA DM"
+            ],
+            dropna=False,
+            sort=False
+        )
+
+        for (
+            dm_values,
+            dm_grp
+        ) in dm_groups:
+
+            if not isinstance(
+                dm_values,
+                tuple
+            ):
+                dm_values = (
+                    dm_values,
+                )
+
+            dm_kod = dm_values[0]
+            dm_name = dm_values[1]
+
+            if pd.isna(dm_kod):
+                dm_kod = ""
+
+            if pd.isna(dm_name):
+                dm_name = ""
+
+            dm_kod = str(
+                dm_kod
+            ).strip()
+
+            dm_name = str(
+                dm_name
+            ).strip()
+
+            dm_row = build_summary_row(
+                format_kod_dm(dm_kod),
+                dm_name,
+                dm_grp,
+                age_groups
+            )
+
+            dm_rows.append(
+                dm_row
+            )
+
+        # ----------------------------------------------------
+        # Sort DM numerically
+        # ----------------------------------------------------
+
+        dm_rows.sort(
+            key=lambda row:
+            numeric_sort_key(
+                row["KOD"]
+            )
+        )
+
+        # ----------------------------------------------------
+        # DUN subtotal
+        #
+        # IMPORTANT:
+        # Calculated from ALL underlying records in dun_grp.
+        # Percentages therefore use the DUN total as denominator.
+        # ----------------------------------------------------
+
+        dun_total_row = build_summary_row(
+            format_kod_dun(dun_kod),
+            dun_name,
+            dun_grp,
+            age_groups
+        )
+
+        dun_blocks.append(
+            (
+                numeric_sort_key(
+                    format_kod_dun(
+                        dun_kod
+                    )
+                ),
+                dm_rows,
+                dun_total_row
+            )
+        )
+
+    # ========================================================
+    # SORT DUNs
+    # ========================================================
+
+    dun_blocks.sort(
+        key=lambda item: item[0]
+    )
+
+    # ========================================================
+    # CREATE FINAL ROW LIST
+    # ========================================================
+
+    for block_index, (
+        _sort_key,
+        dm_rows,
+        dun_total_row
+    ) in enumerate(dun_blocks):
+
+        # ----------------------------------------------------
+        # DM rows
+        # ----------------------------------------------------
+
+        for row in dm_rows:
+
+            output_rows.append(
+                row
+            )
+
+        # ----------------------------------------------------
+        # DUN subtotal
+        # ----------------------------------------------------
+
+        output_rows.append(
+            dun_total_row
+        )
+
+        # ----------------------------------------------------
+        # Blank row between DUNs
+        # ----------------------------------------------------
+
+        if block_index < len(dun_blocks) - 1:
+
+            output_rows.append(
+                {
+                    header: ""
+                    for header in headers
+                }
+            )
+
+    # ========================================================
+    # DATAFRAME
+    # ========================================================
+
+    if output_rows:
+
+        result = pd.DataFrame(
+            output_rows
+        )
+
+    else:
+
+        result = pd.DataFrame(
+            columns=headers
+        )
+
+    # --------------------------------------------------------
+    # Ensure all headers exist
+    # --------------------------------------------------------
+
+    for header in headers:
+
+        if header not in result.columns:
+            result[header] = 0
+
+    result = result[headers]
+
+    return result
 
 
 # ============================================================
@@ -800,7 +1037,9 @@ def add_total_row(
     return pd.concat(
         [
             df,
-            pd.DataFrame([total_row])
+            pd.DataFrame(
+                [total_row]
+            )
         ],
         ignore_index=True
     )
@@ -816,9 +1055,9 @@ def write_summary_sheet(
     headers
 ):
 
-    # --------------------------------------------------------
-    # Colours
-    # --------------------------------------------------------
+    # ========================================================
+    # COLOURS
+    # ========================================================
 
     BLUE = "9DC3E6"
     GREEN = "A9D18E"
@@ -837,56 +1076,71 @@ def write_summary_sheet(
         color="000000"
     )
 
-    # --------------------------------------------------------
-    # Column group colours
-    # --------------------------------------------------------
+    # ========================================================
+    # COLUMN GROUP COLOURS
+    # ========================================================
 
     group_fill = {}
 
+    # --------------------------------------------------------
     # Sex
+    # --------------------------------------------------------
+
     for c in range(4, 8):
         group_fill[c] = BLUE
 
+    # --------------------------------------------------------
     # Race
+    # --------------------------------------------------------
+
     for c in range(8, 16):
         group_fill[c] = GREEN
 
     # --------------------------------------------------------
-    # AGE SECTION
+    # Age
     #
-    # Age section always starts at column P / 16.
-    # Its ending column is calculated dynamically from
-    # the number of custom age groups.
+    # Dynamic based on configured age_groups.
+    # Age starts immediately after column O.
     # --------------------------------------------------------
 
     age_start = 16
 
+    age_count = 0
+
+    for header in headers:
+
+        if header.endswith(" (%)"):
+
+            base = header.replace(
+                " (%)",
+                ""
+            )
+
+            if base not in {
+                "LELAKI",
+                "PEREMPUAN",
+                "MELAYU",
+                "CINA",
+                "INDIA",
+                "LAIN-LAIN",
+                "UMNO",
+                "PKR",
+                "PAS",
+                "PPBM",
+                "PUTIH",
+                "KELABU",
+                "HITAM",
+                "PENGUNDI AWAL",
+                "POLIS",
+                "PASANGAN POLIS",
+                "ASKAR",
+                "PASANGAN ASKAR"
+            }:
+                age_count += 1
+
     age_end = (
         age_start
-        + (len([
-            h for h in headers
-            if h.endswith(" (%)")
-            and h not in {
-                "LELAKI (%)",
-                "PEREMPUAN (%)",
-                "MELAYU (%)",
-                "CINA (%)",
-                "INDIA (%)",
-                "LAIN-LAIN (%)",
-                "UMNO (%)",
-                "PKR (%)",
-                "PAS (%)",
-                "PPBM (%)",
-                "PUTIH (%)",
-                "KELABU (%)",
-                "HITAM (%)",
-                "PENGUNDI AWAL (%)",
-                "POLIS (%)",
-                "PASANGAN POLIS (%)",
-                "ASKAR (%)",
-                "PASANGAN ASKAR (%)"
-            }
-        ]) * 2)
+        + (age_count * 2)
         - 1
     )
 
@@ -896,22 +1150,21 @@ def write_summary_sheet(
     ):
         group_fill[c] = ORANGE
 
-    # --------------------------------------------------------
-    # Locate remaining groups dynamically
-    # --------------------------------------------------------
+    # ========================================================
+    # DYNAMIC GROUP LOCATIONS
+    # ========================================================
 
     def find_column(name):
 
         try:
-            return headers.index(name) + 1
+            return (
+                headers.index(name)
+                + 1
+            )
 
         except ValueError:
 
             return None
-
-    # --------------------------------------------------------
-    # PARTY
-    # --------------------------------------------------------
 
     party_start = find_column(
         "UMNO"
@@ -925,10 +1178,6 @@ def write_summary_sheet(
         ):
             group_fill[c] = YELLOW
 
-    # --------------------------------------------------------
-    # SIKAP
-    # --------------------------------------------------------
-
     sikap_start = find_column(
         "PUTIH"
     )
@@ -940,10 +1189,6 @@ def write_summary_sheet(
             sikap_start + 6
         ):
             group_fill[c] = WHITE
-
-    # --------------------------------------------------------
-    # AWAL / POLIS / ASKAR
-    # --------------------------------------------------------
 
     awal_start = find_column(
         "PENGUNDI AWAL"
@@ -957,15 +1202,15 @@ def write_summary_sheet(
         ):
             group_fill[c] = PURPLE
 
-    # --------------------------------------------------------
-    # Group borders
-    # --------------------------------------------------------
+    # ========================================================
+    # GROUP BORDERS
+    # ========================================================
 
     group_left_edges = {
         1,
         4,
         8,
-        age_start
+        16
     }
 
     group_right_edges = {
@@ -974,12 +1219,6 @@ def write_summary_sheet(
         15
     }
 
-    # Dynamic age boundary
-    group_right_edges.add(
-        age_end
-    )
-
-    # Dynamic party boundary
     if party_start:
 
         group_left_edges.add(
@@ -990,7 +1229,6 @@ def write_summary_sheet(
             party_start + 7
         )
 
-    # Dynamic sikap boundary
     if sikap_start:
 
         group_left_edges.add(
@@ -1001,7 +1239,6 @@ def write_summary_sheet(
             sikap_start + 5
         )
 
-    # Dynamic awal boundary
     if awal_start:
 
         group_left_edges.add(
@@ -1012,9 +1249,9 @@ def write_summary_sheet(
             len(headers)
         )
 
-    # --------------------------------------------------------
-    # Header
-    # --------------------------------------------------------
+    # ========================================================
+    # HEADER
+    # ========================================================
 
     for col_idx, header in enumerate(
         headers,
@@ -1065,13 +1302,9 @@ def write_summary_sheet(
             bottom=medium
         )
 
-    # --------------------------------------------------------
-    # Data
-    # --------------------------------------------------------
-
-    total_row_number = (
-        len(summary_df) + 1
-    )
+    # ========================================================
+    # DATA
+    # ========================================================
 
     for row_idx, row in enumerate(
         summary_df.itertuples(
@@ -1080,12 +1313,51 @@ def write_summary_sheet(
         start=2
     ):
 
-        is_total = (
-            row_idx == total_row_number
+        values = list(row)
+
+        # ----------------------------------------------------
+        # Detect row type
+        # ----------------------------------------------------
+
+        kod_value = values[0]
+        nama_value = values[1]
+
+        is_blank = (
+            str(kod_value or "") == ""
+            and
+            str(nama_value or "") == ""
+            and
+            all(
+                str(v or "") == ""
+                for v in values[2:]
+            )
         )
 
+        is_dun_total = False
+
+        if not is_blank:
+
+            kod_digits = digits_only(
+                kod_value
+            )
+
+            # DUN code has 5 digits:
+            # 082/12
+            #
+            # DM code has 7 digits:
+            # 082/12/01
+            if (
+                kod_digits
+                and len(kod_digits) <= 5
+            ):
+                is_dun_total = True
+
+        # ----------------------------------------------------
+        # Write cells
+        # ----------------------------------------------------
+
         for col_idx, value in enumerate(
-            row,
+            values,
             start=1
         ):
 
@@ -1094,6 +1366,16 @@ def write_summary_sheet(
                 column=col_idx,
                 value=value
             )
+
+            # ------------------------------------------------
+            # Blank separator row
+            # ------------------------------------------------
+
+            if is_blank:
+
+                cell.border = Border()
+
+                continue
 
             # ------------------------------------------------
             # Alignment
@@ -1120,17 +1402,27 @@ def write_summary_sheet(
             cell.font = Font(
                 name="Calibri",
                 size=11,
-                bold=is_total
+                bold=is_dun_total
             )
 
             # ------------------------------------------------
-            # Total row fill
+            # DUN subtotal fill
+            #
+            # Keep the existing group colour scheme but make
+            # the subtotal row bold.
             # ------------------------------------------------
 
             if (
-                is_total
+                is_dun_total
                 and col_idx in group_fill
             ):
+
+                cell.fill = PatternFill(
+                    "solid",
+                    fgColor=group_fill[col_idx]
+                )
+
+            elif col_idx in group_fill:
 
                 cell.fill = PatternFill(
                     "solid",
@@ -1158,18 +1450,18 @@ def write_summary_sheet(
                 right=right,
                 top=(
                     medium
-                    if is_total
+                    if is_dun_total
                     else thin
                 ),
                 bottom=(
                     medium
-                    if is_total
+                    if is_dun_total
                     else thin
                 )
             )
 
             # ------------------------------------------------
-            # Number formatting
+            # Number format
             # ------------------------------------------------
 
             header = headers[
@@ -1181,7 +1473,9 @@ def write_summary_sheet(
                 (int, float)
             ):
 
-                if header.endswith("(%)"):
+                if header.endswith(
+                    "(%)"
+                ):
 
                     cell.number_format = "0.0"
 
@@ -1189,9 +1483,9 @@ def write_summary_sheet(
 
                     cell.number_format = "#,##0"
 
-    # --------------------------------------------------------
-    # Column widths
-    # --------------------------------------------------------
+    # ========================================================
+    # COLUMN WIDTHS
+    # ========================================================
 
     widths = {
         "A": 13,
@@ -1260,9 +1554,9 @@ def write_summary_sheet(
             column
         ].width = width
 
-    # --------------------------------------------------------
-    # Dynamic width for NAMA
-    # --------------------------------------------------------
+    # ========================================================
+    # DYNAMIC WIDTH FOR NAMA
+    # ========================================================
 
     max_len = 0
 
@@ -1286,17 +1580,53 @@ def write_summary_sheet(
         60
     )
 
-    # --------------------------------------------------------
-    # General worksheet settings
-    # --------------------------------------------------------
+    # ========================================================
+    # ROW HEIGHT
+    # ========================================================
 
     ws.row_dimensions[1].height = 15.75
 
+    for row_idx in range(
+        2,
+        ws.max_row + 1
+    ):
+
+        # Blank separator rows are slightly smaller
+        is_blank = all(
+            ws.cell(
+                row=row_idx,
+                column=col
+            ).value in (
+                None,
+                ""
+            )
+            for col in range(
+                1,
+                len(headers) + 1
+            )
+        )
+
+        if is_blank:
+
+            ws.row_dimensions[
+                row_idx
+            ].height = 8
+
+        else:
+
+            ws.row_dimensions[
+                row_idx
+            ].height = 15
+
+    # ========================================================
+    # GENERAL WORKSHEET SETTINGS
+    # ========================================================
+
     ws.freeze_panes = "A2"
 
-    # --------------------------------------------------------
-    # Page setup
-    # --------------------------------------------------------
+    # ========================================================
+    # PAGE SETUP
+    # ========================================================
 
     ws.page_setup.orientation = "landscape"
 
@@ -1305,6 +1635,7 @@ def write_summary_sheet(
     )
 
     ws.page_setup.fitToWidth = 1
+
     ws.page_setup.fitToHeight = 0
 
     ws.sheet_properties.pageSetUpPr.fitToPage = True
@@ -1333,9 +1664,9 @@ def prepare_dataframe(
         for c in df.columns
     ]
 
-    # --------------------------------------------------------
-    # Parliament
-    # --------------------------------------------------------
+    # ========================================================
+    # PARLIAMENT
+    # ========================================================
 
     col_kod_parlimen = get_col(
         df,
@@ -1355,9 +1686,9 @@ def prepare_dataframe(
         ]
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # DUN
-    # --------------------------------------------------------
+    # ========================================================
 
     col_kod_dun = get_col(
         df,
@@ -1377,9 +1708,9 @@ def prepare_dataframe(
         ]
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # DM
-    # --------------------------------------------------------
+    # ========================================================
 
     col_dm = get_col(
         df,
@@ -1398,9 +1729,9 @@ def prepare_dataframe(
         ]
     )
 
-    # --------------------------------------------------------
-    # Other columns
-    # --------------------------------------------------------
+    # ========================================================
+    # OTHER COLUMNS
+    # ========================================================
 
     col_jantina = get_col(
         df,
@@ -1487,9 +1818,9 @@ def prepare_dataframe(
             + ", ".join(missing)
         )
 
-    # --------------------------------------------------------
-    # Hierarchy
-    # --------------------------------------------------------
+    # ========================================================
+    # HIERARCHY
+    # ========================================================
 
     df["_KOD PARLIMEN"] = (
         df[col_kod_parlimen]
@@ -1535,9 +1866,9 @@ def prepare_dataframe(
         .str.strip()
     )
 
-    # --------------------------------------------------------
-    # Demographic fields
-    # --------------------------------------------------------
+    # ========================================================
+    # DEMOGRAPHIC FIELDS
+    # ========================================================
 
     df["_jantina"] = (
         df[col_jantina]
@@ -1552,6 +1883,8 @@ def prepare_dataframe(
         .apply(normalise_race)
     )
 
+    # IMPORTANT:
+    # Age groups come directly from the Streamlit inputs.
     df["_age_group"] = (
         df[col_umur]
         .apply(
@@ -1563,9 +1896,9 @@ def prepare_dataframe(
         )
     )
 
-    # --------------------------------------------------------
-    # Party
-    # --------------------------------------------------------
+    # ========================================================
+    # PARTY
+    # ========================================================
 
     if col_party:
 
@@ -1581,9 +1914,9 @@ def prepare_dataframe(
 
         df["_party"] = ""
 
-    # --------------------------------------------------------
-    # Sikap
-    # --------------------------------------------------------
+    # ========================================================
+    # SIKAP
+    # ========================================================
 
     if col_sikap:
 
@@ -1596,9 +1929,9 @@ def prepare_dataframe(
 
         df["_sikap"] = ""
 
-    # --------------------------------------------------------
-    # Service numbers
-    # --------------------------------------------------------
+    # ========================================================
+    # SERVICE NUMBERS
+    # ========================================================
 
     df["_NoPerkhidmatan_clean"] = (
         df[col_no]
@@ -1610,9 +1943,9 @@ def prepare_dataframe(
         .apply(clean_service_no)
     )
 
-    # --------------------------------------------------------
-    # Classification
-    # --------------------------------------------------------
+    # ========================================================
+    # CLASSIFICATION
+    # ========================================================
 
     df["_awal_type"] = (
         df["_NoPerkhidmatan_clean"]
@@ -1650,40 +1983,6 @@ def generate_demografik(
     logs = []
 
     all_data = []
-
-    # --------------------------------------------------------
-    # Clean age-group labels
-    # --------------------------------------------------------
-
-    age_groups = [
-        str(age).strip()
-        for age in age_groups
-    ]
-
-    if len(age_groups) != 6:
-
-        raise ValueError(
-            "Exactly 6 age groups are required."
-        )
-
-    if any(
-        not age
-        for age in age_groups
-    ):
-
-        raise ValueError(
-            "All 6 age groups must be filled in."
-        )
-
-    if len(set(age_groups)) != len(age_groups):
-
-        raise ValueError(
-            "Age groups must be unique."
-        )
-
-    # --------------------------------------------------------
-    # Build headers using the custom age groups
-    # --------------------------------------------------------
 
     headers = build_headers(
         age_groups
@@ -1743,9 +2042,11 @@ def generate_demografik(
 
     wb = Workbook()
 
-    # Remove default sheet
     default_ws = wb.active
-    wb.remove(default_ws)
+
+    wb.remove(
+        default_ws
+    )
 
     # ========================================================
     # 1. PARLIMEN
@@ -1778,63 +2079,73 @@ def generate_demografik(
     )
 
     # ========================================================
-    # 2. DUN
-    # ========================================================
-
-    ws_dun = wb.create_sheet(
-        title="DUN"
-    )
-
-    dun_df = build_summary_df(
-        final_df,
-        [
-            "_KOD DUN",
-            "_NAMA DUN"
-        ],
-        age_groups,
-        headers,
-        kod_formatter=format_kod_dun
-    )
-
-    write_summary_sheet(
-        ws_dun,
-        dun_df,
-        headers
-    )
-
-    logs.append(
-        f"DUN worksheet: "
-        f"{len(dun_df) - 1:,} DUN(s)"
-    )
-
-    # ========================================================
-    # 3. DM
+    # 2. DM
+    #
+    # ONE worksheet ONLY.
+    #
+    # DM rows are grouped by DUN.
+    # Each DUN gets a subtotal row.
     # ========================================================
 
     ws_dm = wb.create_sheet(
         title="DM"
     )
 
-    dm_df = build_summary_df(
-        final_df,
-        [
-            "_KOD DM",
-            "_NAMA DM"
-        ],
-        age_groups,
-        headers,
-        kod_formatter=format_kod_dm
+    dm_with_dun_df = (
+        build_dm_with_dun_totals(
+            final_df,
+            age_groups,
+            headers
+        )
     )
 
     write_summary_sheet(
         ws_dm,
-        dm_df,
+        dm_with_dun_df,
         headers
+    )
+
+    # --------------------------------------------------------
+    # Count DUNs and DMs for logging
+    # --------------------------------------------------------
+
+    dun_count = (
+        final_df[
+            [
+                "_KOD DUN",
+                "_NAMA DUN"
+            ]
+        ]
+        .drop_duplicates()
+        .shape[0]
+    )
+
+    dm_count = (
+        final_df[
+            [
+                "_KOD DM",
+                "_NAMA DM"
+            ]
+        ]
+        .drop_duplicates()
+        .shape[0]
     )
 
     logs.append(
         f"DM worksheet: "
-        f"{len(dm_df) - 1:,} DM(s)"
+        f"{dm_count:,} DM(s), "
+        f"{dun_count:,} DUN subtotal(s)"
+    )
+
+    logs.append(
+        "DUN subtotals calculated directly "
+        "from underlying records; percentages "
+        "were recalculated from DUN totals."
+    )
+
+    logs.append(
+        "Age groups used: "
+        + ", ".join(age_groups)
     )
 
     # ========================================================
@@ -1843,7 +2154,9 @@ def generate_demografik(
 
     output = io.BytesIO()
 
-    wb.save(output)
+    wb.save(
+        output
+    )
 
     output.seek(0)
 
@@ -1853,7 +2166,9 @@ def generate_demografik(
 
     if len(uploaded_files) == 1:
 
-        source_name = uploaded_files[0].name
+        source_name = (
+            uploaded_files[0].name
+        )
 
         source_name = re.sub(
             r"\.(xlsx|xls)$",
