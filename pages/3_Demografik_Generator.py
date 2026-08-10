@@ -49,14 +49,9 @@ st.subheader(
 )
 
 st.caption(
-    "Enter the age ranges to be used in the "
-    "DEMOGRAFIK calculation."
+    "Enter the age ranges to be used in the DEMOGRAFIK calculation."
 )
 
-
-# ============================================================
-# AGE GROUP ROW 1
-# ============================================================
 
 age_col1, age_col2, age_col3 = st.columns(3)
 
@@ -87,10 +82,6 @@ with age_col3:
         key="dm_age_group_3"
     )
 
-
-# ============================================================
-# AGE GROUP ROW 2
-# ============================================================
 
 age_col4, age_col5, age_col6 = st.columns(3)
 
@@ -149,9 +140,9 @@ if uploaded_files:
 
         try:
 
-            # ------------------------------------------------
-            # Validate age groups
-            # ------------------------------------------------
+            # =================================================
+            # VALIDATE AGE GROUPS
+            # =================================================
 
             if any(
                 not age
@@ -164,6 +155,7 @@ if uploaded_files:
 
                 st.stop()
 
+
             if len(
                 set(age_groups)
             ) != len(age_groups):
@@ -174,48 +166,38 @@ if uploaded_files:
 
                 st.stop()
 
-            # ------------------------------------------------
-            # Validate age-group syntax
-            #
-            # Accepted:
-            # 18-21
-            # 22-30
-            # 31 - 40
-            # 41–50
-            # 61+
-            # ------------------------------------------------
 
-            import re
+            # =================================================
+            # BASIC AGE FORMAT VALIDATION
+            # =================================================
 
-            invalid_groups = []
+            invalid_age_groups = []
 
-            for age_group in age_groups:
-
-                valid_range = re.fullmatch(
-                    r"\d+\s*[-–—]\s*\d+",
-                    age_group
-                )
-
-                valid_plus = re.fullmatch(
-                    r"\d+\s*\+",
-                    age_group
-                )
+            for age in age_groups:
 
                 if not (
-                    valid_range
-                    or valid_plus
+                    __import__("re").fullmatch(
+                        r"\d+\s*-\s*\d+",
+                        age
+                    )
+                    or
+                    __import__("re").fullmatch(
+                        r"\d+\s*\+",
+                        age
+                    )
                 ):
 
-                    invalid_groups.append(
-                        age_group
+                    invalid_age_groups.append(
+                        age
                     )
 
-            if invalid_groups:
+
+            if invalid_age_groups:
 
                 st.error(
                     "Invalid age group format: "
                     + ", ".join(
-                        invalid_groups
+                        invalid_age_groups
                     )
                     + ". Use formats such as "
                     "18-21 or 61+."
@@ -223,9 +205,10 @@ if uploaded_files:
 
                 st.stop()
 
-            # ------------------------------------------------
-            # Generate workbook
-            # ------------------------------------------------
+
+            # =================================================
+            # GENERATE WORKBOOK
+            # =================================================
 
             excel_bytes, out_name, logs = (
                 generate_demografik(
@@ -234,13 +217,19 @@ if uploaded_files:
                 )
             )
 
+
+            # =================================================
+            # SUCCESS
+            # =================================================
+
             st.success(
                 f"Generated: {out_name}"
             )
 
-            # ------------------------------------------------
-            # Processing log
-            # ------------------------------------------------
+
+            # =================================================
+            # PROCESSING LOG
+            # =================================================
 
             with st.expander(
                 "Processing log"
@@ -248,11 +237,14 @@ if uploaded_files:
 
                 for log in logs:
 
-                    st.write(log)
+                    st.write(
+                        log
+                    )
 
-            # ------------------------------------------------
-            # Download
-            # ------------------------------------------------
+
+            # =================================================
+            # DOWNLOAD
+            # =================================================
 
             st.download_button(
                 label="Download Excel",
@@ -266,11 +258,13 @@ if uploaded_files:
                 key="dm_stats_download_button"
             )
 
+
         except Exception as e:
 
             st.error(
                 str(e)
             )
+
 
 else:
 
