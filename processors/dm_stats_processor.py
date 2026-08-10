@@ -230,7 +230,6 @@ def build_rumusan_df(dun_df):
 
 
 def add_parliament_total_row(final_df, kod_parlimen, nama_parlimen):
-    """Create one grand-total row from the underlying Parliament-level data."""
     row = build_dm_row(kod_parlimen, nama_parlimen, final_df)
     row['KOD DM'] = str(kod_parlimen).strip()
     row['NAMA DM'] = str(nama_parlimen).strip().upper()
@@ -240,6 +239,37 @@ def add_parliament_total_row(final_df, kod_parlimen, nama_parlimen):
             row[h] = 0
 
     return pd.DataFrame([row])[HEADERS]
+
+
+def build_age_race_gender_df(final_df):
+    """Build age-group-by-race with male/female breakdown.
+
+    Percentages are calculated against the total population of each race,
+    matching the percentage convention used by the main demographic table.
+    """
+    rows = []
+
+    for race in MAIN_RACES:
+        race_df = final_df[final_df['_race'] == race]
+        race_total = len(race_df)
+
+        for age in AGE_GROUPS:
+            age_df = race_df[race_df['_age_group'] == age]
+            lelaki = int((age_df['_jantina'] == 'L').sum())
+            perempuan = int((age_df['_jantina'] == 'P').sum())
+
+            rows.append({
+                'KAUM': race,
+                'UMUR': age,
+                'LELAKI': lelaki,
+                'LELAKI (%)': pct(lelaki, race_total),
+                'PEREMPUAN': perempuan,
+                'PEREMPUAN (%)': pct(perempuan, race_total),
+            })
+
+    return pd.DataFrame(rows, columns=[
+        'KAUM', 'UMUR', 'LELAKI', 'LELAKI (%)', 'PEREMPUAN', 'PEREMPUAN (%)'
+    ])
 
 
 def _group_fill_and_edges():
@@ -272,7 +302,7 @@ def _group_fill_and_edges():
     return group_fill, group_left_edges, group_right_edges, thin_right_edges, thin_left_edges
 
 
-def write_combined_sheet(ws, combined_df, total_row_numbers, parliament_row_number):
+def write_combined_sheet(ws, combined_df, total_row_numbers, parliament_row_number, age_race_gender_df):
     group_fill, group_left_edges, group_right_edges, thin_right_edges, thin_left_edges = _group_fill_and_edges()
 
     thin = Side(style='thin', color='000000')
@@ -339,21 +369,89 @@ def write_combined_sheet(ws, combined_df, total_row_numbers, parliament_row_numb
     for row in range(2, ws.max_row + 1):
         ws.cell(row=row, column=2).alignment = Alignment(horizontal='left', vertical='center')
 
-    ws.row_dimensions[1].height = 15.75
-    ws.freeze_panes = 'A2'
+    main_end_row = len(combined_df) + 1
+    title_row = main_end_row + 2
+    header_row = title_row + 1
+    data_start_row = header_row + 1
+    data_end_row = data_start_row + len(age_race_gender_df) - 1
 
-    end_row = len(combined_df) + 1
-    table_ref = f"A1:AY{end_row}"
-    tab = Table(displayName="Table_Demografik_Combined", ref=table_ref)
-    style = TableStyleInfo(
-        name="TableStyleLight1",
-        showFirstColumn=False,
-        showLastColumn=False,
-        showRowStripes=False,
-        showColumnStripes=False
-    )
-    tab.tableStyleInfo = style
-    ws.add_table(tab)
+    ws.merge_cells(start_row=title_row, start_column=1, end_row=title_row, end_column=6)
+    title_cell = ws.cell(row=title_row, column=1, value='UMUR MENGIKUT KAUM DAN JANTINA')
+    title_cell.font = Font(name='Calibri', size=14, bold=True)
+    title_cell.alignment = Alignment(horizontal='center', vertical='center')
+    title_cell.fill = PatternFill('solid', fgColor='D9EAD3')
+    title_cell.border = Border(left=medium, right=medium, top=medium, bottom=medium)
+    ws.row_dimensions[title_row].height = 24
+
+    age_headers = ['KAUM', 'UMUR', 'LELAKI', 'LELAKI (%)', 'PEREMPUAN', 'PEREMPUAN (%)']
+    age_header_fills = ['A9D18E', 'F4B183', '9DC3E6', '9DC3E6', '9DC3E6', '9DC3E6']
+
+    for col_idx, (h, fill_color) in enumerate(zip(age_headers, age_header_fills), start=1):
+        cell = ws.cell(row=header_row, column=col_idx, value=h)
+        cell.font = Font(name='Calibri', size=11, bold=True)
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.fill = PatternFill('solid', fgColor=fill_color)
+        cell.border = Border(left=medium, right=medium, top=medium, bottom=medium)
+
+    race_fills = {
+        'MELAYU': 'A9D18E',
+        'CINA': 'A9D18E',
+        'INDIA': 'A9D18E',
+        'LAIN-LAIN': 'A9D18E'
+    }
+
+    for r_idx, row in enumerate(age_race_gender_df.itertuples(index=False), start=data_start_row):
+        values = list(row)
+        race = values[0]
+        for c_idx, value in enumerate(values, start=1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=value)
+            cell.font = Font(name='Calibri', size=11, bold=False)
+            cell.alignment = Alignment(
+                horizontal='left' if c_idx in {1, 2} else 'center',
+                vertical='center'
+            )
+            cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+            if c_idx == 1:
+                cell.fill = PatternFill('solid', fgColor=race_fills[race])
+                cell.font = Font(name='Calibri', size=11, bold=True)
+            elif c_idx == 2:
+                cell.fill = PatternFill('solid', fgColor='F4B183')
+            elif c_idx in {3, 4, 5, 6}:
+                cell.fill = PatternFill('solid', fgColor='9DC3E6')
+
+            if c_idx in {4, 6} and isinstance(value, (int, float)):
+                cell.number_format = '0.0'
+            elif c_idx in {3, 5} and isinstance(value, (int, float)):
+                cell.number_format = '#,##0'
+
+    if data_end_row >= data_start_row:
+        age_table = Table(
+            displayName='Table_UmurKaumJantina',
+            ref=f'A{header_row}:F{data_end_row}'
+        )
+        age_style = TableStyleInfo(
+            name='TableStyleLight1',
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=False,
+            showColumnStripes=False
+        )
+        age_table.tableStyleInfo = age_style
+        ws.add_table(age_table)
+
+    age_widths = {
+        'A': max(ws.column_dimensions['A'].width or 13, 18),
+        'B': max(ws.column_dimensions['B'].width or 25, 14),
+        'C': 13,
+        'D': 15,
+        'E': 17,
+        'F': 19
+    }
+    for col, width in age_widths.items():
+        ws.column_dimensions[col].width = width
+
+    ws.freeze_panes = 'A2'
 
 
 def generate_demografik(uploaded_files):
@@ -467,10 +565,18 @@ def generate_demografik(uploaded_files):
     combined_df = pd.concat(combined_parts + [parliament_df], ignore_index=True)
     parliament_row_number = len(combined_df) - 1
 
+    age_race_gender_df = build_age_race_gender_df(final_df)
+
     wb = Workbook()
     ws = wb.active
     ws.title = 'DEMOGRAFIK'
-    write_combined_sheet(ws, combined_df, total_row_numbers, parliament_row_number)
+    write_combined_sheet(
+        ws,
+        combined_df,
+        total_row_numbers,
+        parliament_row_number,
+        age_race_gender_df
+    )
 
     output = io.BytesIO()
     wb.save(output)
@@ -479,6 +585,7 @@ def generate_demografik(uploaded_files):
     out_name = f"DEMOGRAFIK {clean_filename(nama_parlimen)}.xlsx"
     logs.append(f"Combined {len(dun_combos)} DUN(s) into one worksheet")
     logs.append(f"Parliament grand total: {kod_parlimen} - {nama_parlimen} ({len(final_df):,} rows)")
+    logs.append("Added age group by kaum and jantina table")
 
     return output.getvalue(), out_name, logs
 
