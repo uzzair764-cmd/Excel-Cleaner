@@ -2,6 +2,7 @@ import io
 import re
 
 import pandas as pd
+
 from openpyxl import Workbook
 from openpyxl.styles import (
     Font,
@@ -130,6 +131,7 @@ def numeric_sort_key(value):
 
     try:
         return int(digits)
+
     except Exception:
         return -1
 
@@ -157,12 +159,7 @@ def format_kod_dun(value):
     if not kod:
         return ""
 
-    kod = kod.zfill(5)
-
-    return (
-        f"{kod[:3]}/"
-        f"{kod[3:]}"
-    )
+    return kod
 
 
 def format_kod_parlimen(value):
@@ -172,22 +169,7 @@ def format_kod_parlimen(value):
     if not kod:
         return ""
 
-    return kod.zfill(3)
-
-
-def get_dun_code_from_dm(kod_dm):
-
-    kod = digits_only(kod_dm)
-
-    if not kod:
-        return ""
-
-    kod = kod.zfill(7)
-
-    return (
-        f"{kod[:3]}/"
-        f"{kod[3:5]}"
-    )
+    return kod
 
 
 # ============================================================
@@ -303,7 +285,7 @@ def get_age_group(value, age_groups):
         label_clean = str(label).strip()
 
         # ----------------------------------------------------
-        # Example: 61+
+        # 61+
         # ----------------------------------------------------
 
         plus_match = re.fullmatch(
@@ -323,7 +305,7 @@ def get_age_group(value, age_groups):
             continue
 
         # ----------------------------------------------------
-        # Example: 18-21
+        # 18-21
         # ----------------------------------------------------
 
         range_match = re.fullmatch(
@@ -398,6 +380,7 @@ def build_headers(age_groups):
         headers.append(f"{age} (%)")
 
     headers.extend([
+
         "UMNO",
         "UMNO (%)",
 
@@ -457,9 +440,9 @@ def build_summary_row(
         "JUMLAH": total
     }
 
-    # ========================================================
+    # --------------------------------------------------------
     # SEX
-    # ========================================================
+    # --------------------------------------------------------
 
     sex_vc = grp["_jantina"].value_counts()
 
@@ -474,14 +457,15 @@ def build_summary_row(
         )
 
         row[label] = count
+
         row[f"{label} (%)"] = pct(
             count,
             total
         )
 
-    # ========================================================
+    # --------------------------------------------------------
     # RACE
-    # ========================================================
+    # --------------------------------------------------------
 
     race_vc = grp["_race"].value_counts()
 
@@ -493,14 +477,15 @@ def build_summary_row(
         )
 
         row[race] = count
+
         row[f"{race} (%)"] = pct(
             count,
             total
         )
 
-    # ========================================================
+    # --------------------------------------------------------
     # AGE
-    # ========================================================
+    # --------------------------------------------------------
 
     age_vc = grp["_age_group"].value_counts()
 
@@ -512,14 +497,15 @@ def build_summary_row(
         )
 
         row[age] = count
+
         row[f"{age} (%)"] = pct(
             count,
             total
         )
 
-    # ========================================================
+    # --------------------------------------------------------
     # PARTY
-    # ========================================================
+    # --------------------------------------------------------
 
     party_vc = grp["_party"].value_counts()
 
@@ -531,14 +517,15 @@ def build_summary_row(
         )
 
         row[party] = count
+
         row[f"{party} (%)"] = pct(
             count,
             total
         )
 
-    # ========================================================
+    # --------------------------------------------------------
     # SIKAP
-    # ========================================================
+    # --------------------------------------------------------
 
     sikap_vc = grp["_sikap"].value_counts()
 
@@ -550,14 +537,15 @@ def build_summary_row(
         )
 
         row[sikap] = count
+
         row[f"{sikap} (%)"] = pct(
             count,
             total
         )
 
-    # ========================================================
+    # --------------------------------------------------------
     # PENGUNDI AWAL / POLIS / ASKAR
-    # ========================================================
+    # --------------------------------------------------------
 
     awal_vc = grp["_awal_type"].value_counts()
 
@@ -586,30 +574,35 @@ def build_summary_row(
     )
 
     row["PENGUNDI AWAL"] = pengundi_awal
+
     row["PENGUNDI AWAL (%)"] = pct(
         pengundi_awal,
         total
     )
 
     row["POLIS"] = polis
+
     row["POLIS (%)"] = pct(
         polis,
         total
     )
 
     row["PASANGAN POLIS"] = pasangan_polis
+
     row["PASANGAN POLIS (%)"] = pct(
         pasangan_polis,
         total
     )
 
     row["ASKAR"] = askar
+
     row["ASKAR (%)"] = pct(
         askar,
         total
     )
 
     row["PASANGAN ASKAR"] = pasangan_askar
+
     row["PASANGAN ASKAR (%)"] = pct(
         pasangan_askar,
         total
@@ -619,7 +612,7 @@ def build_summary_row(
 
 
 # ============================================================
-# BUILD SUMMARY TABLE
+# BUILD SUMMARY DATAFRAME
 # ============================================================
 
 def build_summary_df(
@@ -644,6 +637,7 @@ def build_summary_df(
             group_values,
             tuple
         ):
+
             group_values = (
                 group_values,
             )
@@ -661,6 +655,7 @@ def build_summary_df(
         nama = str(nama).strip()
 
         if kod_formatter:
+
             kod = kod_formatter(kod)
 
         rows.append(
@@ -674,9 +669,9 @@ def build_summary_df(
 
     summary_df = pd.DataFrame(rows)
 
-    # ========================================================
+    # --------------------------------------------------------
     # Ensure all headers exist
-    # ========================================================
+    # --------------------------------------------------------
 
     for header in headers:
 
@@ -685,9 +680,9 @@ def build_summary_df(
 
     summary_df = summary_df[headers]
 
-    # ========================================================
+    # --------------------------------------------------------
     # Sort by KOD
-    # ========================================================
+    # --------------------------------------------------------
 
     if not summary_df.empty:
 
@@ -710,121 +705,265 @@ def build_summary_df(
 
 
 # ============================================================
-# TOTAL ROW FROM SUMMARY DATAFRAME
-#
-# Used only for PARLIMEN.
-# DUN totals inside DM are calculated from underlying records.
+# TOTAL ROW FROM UNDERLYING RECORDS
 # ============================================================
 
-def add_total_row(
-    df,
-    headers
-):
-
-    if df.empty:
-
-        total = 0
-
-    else:
-
-        total = pd.to_numeric(
-            df["JUMLAH"],
-            errors="coerce"
-        ).fillna(0).sum()
-
-    total_row = {
-        "KOD": "",
-        "NAMA": "",
-        "JUMLAH": total
-    }
-
-    for header in headers:
-
-        if header in {
-            "KOD",
-            "NAMA",
-            "JUMLAH"
-        }:
-            continue
-
-        if header.endswith("(%)"):
-
-            base = header.replace(
-                " (%)",
-                ""
-            )
-
-            numerator = total_row.get(
-                base,
-                0
-            )
-
-            total_row[header] = pct(
-                numerator,
-                total
-            )
-
-        else:
-
-            if header in df.columns:
-
-                total_row[header] = (
-                    pd.to_numeric(
-                        df[header],
-                        errors="coerce"
-                    )
-                    .fillna(0)
-                    .sum()
-                )
-
-            else:
-
-                total_row[header] = 0
-
-    return pd.concat(
-        [
-            df,
-            pd.DataFrame([total_row])
-        ],
-        ignore_index=True
-    )
-
-
-# ============================================================
-# CALCULATE TOTAL FROM UNDERLYING DUN RECORDS
-#
-# IMPORTANT:
-# Percentages are recalculated from the underlying records.
-# They are NOT averaged from DM percentages.
-# ============================================================
-
-def build_dun_total_row(
-    dun_code,
-    dun_name,
-    dun_records,
+def build_total_from_group(
+    grp,
     age_groups
 ):
 
     return build_summary_row(
-        dun_code,
-        dun_name,
-        dun_records,
+        "",
+        "",
+        grp,
         age_groups
     )
 
 
 # ============================================================
-# SHEET FORMATTING HELPERS
+# BUILD DUN-SUBTOTALLED DM TABLE
 # ============================================================
 
-def get_group_fills(headers):
+def build_dm_grouped_table(
+    df,
+    age_groups,
+    headers
+):
 
-    BLUE = "9DC3E6"
-    GREEN = "A9D18E"
-    ORANGE = "F4B183"
-    YELLOW = "FFD966"
-    WHITE = "D9D9D9"
-    PURPLE = "B4A7D6"
+    # --------------------------------------------------------
+    # First build individual DM summaries
+    # --------------------------------------------------------
+
+    dm_df = build_summary_df(
+        df,
+        [
+            "_KOD DM",
+            "_NAMA DM"
+        ],
+        age_groups,
+        headers,
+        kod_formatter=format_kod_dm
+    )
+
+    # --------------------------------------------------------
+    # Sort DM records by DUN code, then DM code
+    # --------------------------------------------------------
+
+    dm_df["_DUN_SORT"] = (
+        dm_df["KOD"]
+        .astype(str)
+        .str.split("/")
+        .str[:2]
+        .str.join("/")
+        .apply(numeric_sort_key)
+    )
+
+    dm_df["_DM_SORT"] = (
+        dm_df["KOD"]
+        .apply(numeric_sort_key)
+    )
+
+    dm_df = (
+        dm_df
+        .sort_values(
+            [
+                "_DUN_SORT",
+                "_DM_SORT"
+            ],
+            kind="stable"
+        )
+        .reset_index(drop=True)
+    )
+
+    dm_df = dm_df.drop(
+        columns=[
+            "_DUN_SORT",
+            "_DM_SORT"
+        ]
+    )
+
+    # --------------------------------------------------------
+    # Build output rows
+    # --------------------------------------------------------
+
+    output_rows = []
+
+    # --------------------------------------------------------
+    # Group underlying records by DUN
+    # --------------------------------------------------------
+
+    dun_groups = df.groupby(
+        [
+            "_KOD DUN",
+            "_NAMA DUN"
+        ],
+        dropna=False,
+        sort=False
+    )
+
+    dun_metadata = {}
+
+    for (kod_dun, nama_dun), grp in dun_groups:
+
+        if pd.isna(kod_dun):
+            kod_dun = ""
+
+        if pd.isna(nama_dun):
+            nama_dun = ""
+
+        kod_dun = format_kod_dun(
+            kod_dun
+        )
+
+        nama_dun = str(
+            nama_dun
+        ).strip()
+
+        dun_metadata[kod_dun] = {
+            "nama": nama_dun,
+            "data": grp.copy()
+        }
+
+    # --------------------------------------------------------
+    # Sort DUNs numerically
+    # --------------------------------------------------------
+
+    sorted_duns = sorted(
+        dun_metadata.keys(),
+        key=numeric_sort_key
+    )
+
+    # --------------------------------------------------------
+    # Process each DUN
+    # --------------------------------------------------------
+
+    for dun_index, dun_code in enumerate(
+        sorted_duns
+    ):
+
+        dun_info = dun_metadata[dun_code]
+
+        dun_name = dun_info["nama"]
+        dun_data = dun_info["data"]
+
+        # ----------------------------------------------------
+        # Repeat column header before every DUN group
+        #
+        # First group also gets the header.
+        # ----------------------------------------------------
+
+        output_rows.append(
+            {
+                header: header
+                for header in headers
+            }
+        )
+
+        # ----------------------------------------------------
+        # DM codes belonging to this DUN
+        # ----------------------------------------------------
+
+        dun_dm = dm_df[
+            dm_df["KOD"]
+            .astype(str)
+            .str.startswith(
+                f"{dun_code}/"
+            )
+        ].copy()
+
+        dun_dm["_DM_SORT"] = (
+            dun_dm["KOD"]
+            .apply(numeric_sort_key)
+        )
+
+        dun_dm = (
+            dun_dm
+            .sort_values(
+                "_DM_SORT",
+                kind="stable"
+            )
+            .drop(
+                columns="_DM_SORT"
+            )
+        )
+
+        # ----------------------------------------------------
+        # Add DM rows
+        # ----------------------------------------------------
+
+        for _, dm_row in dun_dm.iterrows():
+
+            output_rows.append(
+                {
+                    header: dm_row[header]
+                    for header in headers
+                }
+            )
+
+        # ----------------------------------------------------
+        # DUN TOTAL
+        #
+        # IMPORTANT:
+        # calculated from underlying records belonging
+        # to this DUN, NOT from DM percentages.
+        # ----------------------------------------------------
+
+        total_row = build_summary_row(
+            dun_code,
+            dun_name,
+            dun_data,
+            age_groups
+        )
+
+        output_rows.append(
+            {
+                header: total_row.get(
+                    header,
+                    0
+                )
+                for header in headers
+            }
+        )
+
+        # ----------------------------------------------------
+        # Blank row BETWEEN DUN groups
+        #
+        # No blank row after the final DUN.
+        # ----------------------------------------------------
+
+        if dun_index < len(sorted_duns) - 1:
+
+            output_rows.append(
+                {
+                    header: ""
+                    for header in headers
+                }
+            )
+
+    return pd.DataFrame(
+        output_rows,
+        columns=headers
+    )
+
+
+# ============================================================
+# COLOURS
+# ============================================================
+
+BLUE = "9DC3E6"
+GREEN = "A9D18E"
+ORANGE = "F4B183"
+YELLOW = "FFD966"
+PURPLE = "B4A7D6"
+GREY = "D9D9D9"
+
+
+# ============================================================
+# GROUP FILL MAP
+# ============================================================
+
+def get_group_fill_map(headers):
 
     group_fill = {}
 
@@ -833,6 +972,7 @@ def get_group_fills(headers):
     # --------------------------------------------------------
 
     for c in range(4, 8):
+
         group_fill[c] = BLUE
 
     # --------------------------------------------------------
@@ -840,497 +980,200 @@ def get_group_fills(headers):
     # --------------------------------------------------------
 
     for c in range(8, 16):
+
         group_fill[c] = GREEN
 
     # --------------------------------------------------------
     # AGE
     # --------------------------------------------------------
 
-    age_start = 16
+    age_start = headers.index(
+        "LAIN-LAIN (%)"
+    ) + 1
 
-    for index, header in enumerate(
-        headers,
-        start=1
+    party_start = headers.index(
+        "UMNO"
+    ) + 1
+
+    for c in range(
+        age_start + 1,
+        party_start
     ):
 
-        if index < age_start:
-            continue
-
-        if header in {
-            "UMNO",
-            "UMNO (%)"
-        }:
-            break
-
-        group_fill[index] = ORANGE
+        group_fill[c] = ORANGE
 
     # --------------------------------------------------------
     # PARTY
     # --------------------------------------------------------
 
-    try:
+    for c in range(
+        party_start,
+        party_start + 8
+    ):
 
-        party_start = (
-            headers.index("UMNO") + 1
-        )
-
-        for c in range(
-            party_start,
-            party_start + 8
-        ):
-            group_fill[c] = YELLOW
-
-    except ValueError:
-
-        party_start = None
+        group_fill[c] = YELLOW
 
     # --------------------------------------------------------
     # SIKAP
     # --------------------------------------------------------
 
-    try:
+    sikap_start = headers.index(
+        "PUTIH"
+    ) + 1
 
-        sikap_start = (
-            headers.index("PUTIH") + 1
-        )
+    for c in range(
+        sikap_start,
+        sikap_start + 6
+    ):
 
-        for c in range(
-            sikap_start,
-            sikap_start + 6
-        ):
-            group_fill[c] = WHITE
-
-    except ValueError:
-
-        sikap_start = None
+        group_fill[c] = GREY
 
     # --------------------------------------------------------
-    # AWAL
+    # PENGUNDI AWAL
     # --------------------------------------------------------
 
-    try:
+    awal_start = headers.index(
+        "PENGUNDI AWAL"
+    ) + 1
 
-        awal_start = (
-            headers.index(
-                "PENGUNDI AWAL"
-            ) + 1
-        )
+    for c in range(
+        awal_start,
+        len(headers) + 1
+    ):
 
-        for c in range(
-            awal_start,
-            len(headers) + 1
-        ):
-            group_fill[c] = PURPLE
-
-    except ValueError:
-
-        awal_start = None
+        group_fill[c] = PURPLE
 
     return group_fill
 
 
+# ============================================================
+# GROUP BORDER MAP
+# ============================================================
+
 def get_group_edges(headers):
 
-    group_left_edges = {
+    left_edges = {
         1,
         4,
-        8,
-        16
+        8
     }
 
-    group_right_edges = {
+    right_edges = {
         2,
         7,
         15
     }
 
-    try:
+    # --------------------------------------------------------
+    # Age
+    # --------------------------------------------------------
 
-        party_start = (
-            headers.index("UMNO") + 1
-        )
+    age_start = 16
 
-        group_left_edges.add(
-            party_start
-        )
-
-        group_right_edges.add(
-            party_start + 7
-        )
-
-    except ValueError:
-
-        pass
-
-    try:
-
-        sikap_start = (
-            headers.index("PUTIH") + 1
-        )
-
-        group_left_edges.add(
-            sikap_start
-        )
-
-        group_right_edges.add(
-            sikap_start + 5
-        )
-
-    except ValueError:
-
-        pass
-
-    try:
-
-        awal_start = (
-            headers.index(
-                "PENGUNDI AWAL"
-            ) + 1
-        )
-
-        group_left_edges.add(
-            awal_start
-        )
-
-        group_right_edges.add(
-            len(headers)
-        )
-
-    except ValueError:
-
-        pass
-
-    return (
-        group_left_edges,
-        group_right_edges
+    party_start = (
+        headers.index("UMNO") + 1
     )
+
+    left_edges.add(
+        age_start
+    )
+
+    right_edges.add(
+        party_start - 1
+    )
+
+    # --------------------------------------------------------
+    # Party
+    # --------------------------------------------------------
+
+    left_edges.add(
+        party_start
+    )
+
+    right_edges.add(
+        party_start + 7
+    )
+
+    # --------------------------------------------------------
+    # Sikap
+    # --------------------------------------------------------
+
+    sikap_start = (
+        headers.index("PUTIH") + 1
+    )
+
+    left_edges.add(
+        sikap_start
+    )
+
+    right_edges.add(
+        sikap_start + 5
+    )
+
+    # --------------------------------------------------------
+    # Awal
+    # --------------------------------------------------------
+
+    awal_start = (
+        headers.index("PENGUNDI AWAL") + 1
+    )
+
+    left_edges.add(
+        awal_start
+    )
+
+    right_edges.add(
+        len(headers)
+    )
+
+    return left_edges, right_edges
 
 
 # ============================================================
-# WRITE MAIN HEADER
+# NUMBER FORMATTING
 # ============================================================
 
-def write_main_header(
-    ws,
-    headers,
-    row_number=1
-):
+def is_percentage_header(header):
 
-    group_fill = get_group_fills(
-        headers
+    return str(header).strip().endswith(
+        "(%)"
     )
 
-    (
-        group_left_edges,
-        group_right_edges
-    ) = get_group_edges(
-        headers
-    )
 
-    thin = Side(
-        style="thin",
-        color="000000"
-    )
+def apply_number_format(cell, header, value):
 
-    medium = Side(
-        style="medium",
-        color="000000"
-    )
+    # --------------------------------------------------------
+    # Percentages
+    # --------------------------------------------------------
 
-    for col_idx, header in enumerate(
-        headers,
-        start=1
+    if is_percentage_header(header):
+
+        cell.number_format = "0.0"
+
+        return
+
+    # --------------------------------------------------------
+    # All other numeric columns
+    # --------------------------------------------------------
+
+    if isinstance(
+        value,
+        (int, float)
     ):
 
-        cell = ws.cell(
-            row=row_number,
-            column=col_idx,
-            value=header
-        )
-
-        cell.font = Font(
-            name="Calibri",
-            size=11,
-            bold=True
-        )
-
-        cell.alignment = Alignment(
-            horizontal="center",
-            vertical="center",
-            wrap_text=True
-        )
-
-        if col_idx in group_fill:
-
-            cell.fill = PatternFill(
-                "solid",
-                fgColor=group_fill[col_idx]
-            )
-
-        left = (
-            medium
-            if col_idx in group_left_edges
-            else thin
-        )
-
-        right = (
-            medium
-            if col_idx in group_right_edges
-            else thin
-        )
-
-        cell.border = Border(
-            left=left,
-            right=right,
-            top=medium,
-            bottom=medium
-        )
-
-    ws.row_dimensions[
-        row_number
-    ].height = 30
+        cell.number_format = "#,##0"
 
 
 # ============================================================
-# WRITE DATA ROW
-#
-# NO FILL COLOR ON NORMAL DM ROWS.
+# SHEET FORMATTING
 # ============================================================
 
-def write_data_row(
+def write_summary_sheet(
     ws,
-    row_number,
-    values,
-    headers,
-    bold=False
-):
-
-    thin = Side(
-        style="thin",
-        color="000000"
-    )
-
-    medium = Side(
-        style="medium",
-        color="000000"
-    )
-
-    (
-        group_left_edges,
-        group_right_edges
-    ) = get_group_edges(
-        headers
-    )
-
-    for col_idx, value in enumerate(
-        values,
-        start=1
-    ):
-
-        cell = ws.cell(
-            row=row_number,
-            column=col_idx,
-            value=value
-        )
-
-        # ----------------------------------------------------
-        # Alignment
-        # ----------------------------------------------------
-
-        if col_idx == 2:
-
-            cell.alignment = Alignment(
-                horizontal="left",
-                vertical="center"
-            )
-
-        else:
-
-            cell.alignment = Alignment(
-                horizontal="center",
-                vertical="center"
-            )
-
-        cell.font = Font(
-            name="Calibri",
-            size=11,
-            bold=bold
-        )
-
-        # ----------------------------------------------------
-        # IMPORTANT:
-        # NO FILL FOR NORMAL DATA ROWS
-        # ----------------------------------------------------
-
-        cell.fill = PatternFill(
-            fill_type=None
-        )
-
-        # ----------------------------------------------------
-        # Borders
-        # ----------------------------------------------------
-
-        left = (
-            medium
-            if col_idx in group_left_edges
-            else thin
-        )
-
-        right = (
-            medium
-            if col_idx in group_right_edges
-            else thin
-        )
-
-        cell.border = Border(
-            left=left,
-            right=right,
-            top=thin,
-            bottom=thin
-        )
-
-        # ----------------------------------------------------
-        # NUMBER FORMAT
-        # ----------------------------------------------------
-
-        header = headers[
-            col_idx - 1
-        ]
-
-        if header.endswith("(%)"):
-
-            cell.number_format = "0.0"
-
-        elif isinstance(
-            value,
-            (int, float)
-        ):
-
-            cell.number_format = "#,##0"
-
-    ws.row_dimensions[
-        row_number
-    ].height = 22
-
-
-# ============================================================
-# WRITE DUN GROUP HEADER
-# ============================================================
-
-def write_dun_group_header(
-    ws,
-    row_number,
-    dun_code,
-    dun_name,
+    summary_df,
     headers
 ):
 
-    medium = Side(
-        style="medium",
-        color="000000"
-    )
-
-    # --------------------------------------------------------
-    # Header fill
-    # --------------------------------------------------------
-
-    fill = PatternFill(
-        "solid",
-        fgColor="D9EAF7"
-    )
-
-    # --------------------------------------------------------
-    # KOD
-    # --------------------------------------------------------
-
-    kod_cell = ws.cell(
-        row=row_number,
-        column=1,
-        value=dun_code
-    )
-
-    kod_cell.font = Font(
-        name="Calibri",
-        size=12,
-        bold=True
-    )
-
-    kod_cell.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-
-    # --------------------------------------------------------
-    # NAMA
-    # --------------------------------------------------------
-
-    nama_cell = ws.cell(
-        row=row_number,
-        column=2,
-        value=dun_name
-    )
-
-    nama_cell.font = Font(
-        name="Calibri",
-        size=12,
-        bold=True
-    )
-
-    nama_cell.alignment = Alignment(
-        horizontal="left",
-        vertical="center"
-    )
-
-    # --------------------------------------------------------
-    # Remaining cells
-    # --------------------------------------------------------
-
-    for col_idx in range(
-        1,
-        len(headers) + 1
-    ):
-
-        cell = ws.cell(
-            row=row_number,
-            column=col_idx
-        )
-
-        cell.fill = fill
-
-        cell.border = Border(
-            top=medium,
-            bottom=medium,
-            left=medium,
-            right=medium
-        )
-
-    ws.row_dimensions[
-        row_number
-    ].height = 25
-
-
-# ============================================================
-# WRITE DUN TOTAL ROW
-# ============================================================
-
-def write_dun_total_row(
-    ws,
-    row_number,
-    total_row,
-    headers
-):
-
-    group_fill = get_group_fills(
-        headers
-    )
-
-    (
-        group_left_edges,
-        group_right_edges
-    ) = get_group_edges(
-        headers
-    )
-
     thin = Side(
         style="thin",
         color="000000"
@@ -1341,112 +1184,17 @@ def write_dun_total_row(
         color="000000"
     )
 
-    for col_idx, header in enumerate(
-        headers,
-        start=1
-    ):
+    group_fill = get_group_fill_map(
+        headers
+    )
 
-        value = total_row.get(
-            header,
-            0
-        )
+    left_edges, right_edges = (
+        get_group_edges(headers)
+    )
 
-        cell = ws.cell(
-            row=row_number,
-            column=col_idx,
-            value=value
-        )
-
-        # ----------------------------------------------------
-        # Alignment
-        # ----------------------------------------------------
-
-        if col_idx == 2:
-
-            cell.alignment = Alignment(
-                horizontal="left",
-                vertical="center"
-            )
-
-        else:
-
-            cell.alignment = Alignment(
-                horizontal="center",
-                vertical="center"
-            )
-
-        cell.font = Font(
-            name="Calibri",
-            size=11,
-            bold=True
-        )
-
-        # ----------------------------------------------------
-        # Total row is coloured
-        # ----------------------------------------------------
-
-        if col_idx in group_fill:
-
-            cell.fill = PatternFill(
-                "solid",
-                fgColor=group_fill[col_idx]
-            )
-
-        else:
-
-            cell.fill = PatternFill(
-                "solid",
-                fgColor="E7E6E6"
-            )
-
-        # ----------------------------------------------------
-        # Borders
-        # ----------------------------------------------------
-
-        left = (
-            medium
-            if col_idx in group_left_edges
-            else thin
-        )
-
-        right = (
-            medium
-            if col_idx in group_right_edges
-            else thin
-        )
-
-        cell.border = Border(
-            left=left,
-            right=right,
-            top=medium,
-            bottom=medium
-        )
-
-        # ----------------------------------------------------
-        # NUMBER FORMAT
-        # ----------------------------------------------------
-
-        if header.endswith("(%)"):
-
-            cell.number_format = "0.0"
-
-        elif isinstance(
-            value,
-            (int, float)
-        ):
-
-            cell.number_format = "#,##0"
-
-    ws.row_dimensions[
-        row_number
-    ].height = 25
-
-
-# ============================================================
-# COLUMN WIDTHS
-# ============================================================
-
-def apply_column_widths(ws):
+    # --------------------------------------------------------
+    # Widths
+    # --------------------------------------------------------
 
     widths = {
         "A": 13,
@@ -1515,12 +1263,262 @@ def apply_column_widths(ws):
             column
         ].width = width
 
+    # --------------------------------------------------------
+    # Identify row types
+    # --------------------------------------------------------
 
-# ============================================================
-# GENERAL WORKSHEET SETTINGS
-# ============================================================
+    def is_header_row(row_values):
 
-def apply_sheet_settings(ws):
+        return (
+            row_values[0] == "KOD"
+            and row_values[1] == "NAMA"
+            and row_values[2] == "JUMLAH"
+        )
+
+    def is_blank_row(row_values):
+
+        return all(
+            value == ""
+            or pd.isna(value)
+            for value in row_values
+        )
+
+    def is_dun_total_row(row_values):
+
+        kod = row_values[0]
+
+        if kod is None or pd.isna(kod):
+            return False
+
+        kod = str(kod).strip()
+
+        # DUN = XX/XX
+        # DM = XXX/XX/XX
+        return bool(
+            re.fullmatch(
+                r"\d+/\d+",
+                kod
+            )
+        )
+
+    # --------------------------------------------------------
+    # Write rows
+    # --------------------------------------------------------
+
+    for row_idx, row in enumerate(
+        summary_df.itertuples(
+            index=False,
+            name=None
+        ),
+        start=1
+    ):
+
+        row_values = list(row)
+
+        header_row = is_header_row(
+            row_values
+        )
+
+        blank_row = is_blank_row(
+            row_values
+        )
+
+        total_row = is_dun_total_row(
+            row_values
+        )
+
+        # ----------------------------------------------------
+        # Header row
+        # ----------------------------------------------------
+
+        if header_row:
+
+            for col_idx, header in enumerate(
+                headers,
+                start=1
+            ):
+
+                cell = ws.cell(
+                    row=row_idx,
+                    column=col_idx,
+                    value=header
+                )
+
+                cell.font = Font(
+                    name="Calibri",
+                    size=11,
+                    bold=True
+                )
+
+                cell.alignment = Alignment(
+                    horizontal="center",
+                    vertical="center",
+                    wrap_text=True
+                )
+
+                # Header gets colour
+                if col_idx in group_fill:
+
+                    cell.fill = PatternFill(
+                        "solid",
+                        fgColor=group_fill[col_idx]
+                    )
+
+                left = (
+                    medium
+                    if col_idx in left_edges
+                    else thin
+                )
+
+                right = (
+                    medium
+                    if col_idx in right_edges
+                    else thin
+                )
+
+                cell.border = Border(
+                    left=left,
+                    right=right,
+                    top=medium,
+                    bottom=medium
+                )
+
+            ws.row_dimensions[
+                row_idx
+            ].height = 30
+
+            continue
+
+        # ----------------------------------------------------
+        # Blank separator
+        # ----------------------------------------------------
+
+        if blank_row:
+
+            ws.row_dimensions[
+                row_idx
+            ].height = 10
+
+            continue
+
+        # ----------------------------------------------------
+        # Normal DM / DUN total row
+        # ----------------------------------------------------
+
+        for col_idx, value in enumerate(
+            row_values,
+            start=1
+        ):
+
+            header = headers[
+                col_idx - 1
+            ]
+
+            cell = ws.cell(
+                row=row_idx,
+                column=col_idx,
+                value=value
+            )
+
+            # ------------------------------------------------
+            # Alignment
+            # ------------------------------------------------
+
+            if col_idx == 2:
+
+                cell.alignment = Alignment(
+                    horizontal="left",
+                    vertical="center"
+                )
+
+            else:
+
+                cell.alignment = Alignment(
+                    horizontal="center",
+                    vertical="center"
+                )
+
+            # ------------------------------------------------
+            # Font
+            # ------------------------------------------------
+
+            cell.font = Font(
+                name="Calibri",
+                size=11,
+                bold=total_row
+            )
+
+            # ------------------------------------------------
+            # IMPORTANT:
+            # ONLY DUN TOTAL ROWS ARE COLOURED.
+            # DM ROWS HAVE NO FILL.
+            # ------------------------------------------------
+
+            if total_row and col_idx in group_fill:
+
+                cell.fill = PatternFill(
+                    "solid",
+                    fgColor=group_fill[col_idx]
+                )
+
+            else:
+
+                cell.fill = PatternFill(
+                    fill_type=None
+                )
+
+            # ------------------------------------------------
+            # Borders
+            # ------------------------------------------------
+
+            left = (
+                medium
+                if col_idx in left_edges
+                else thin
+            )
+
+            right = (
+                medium
+                if col_idx in right_edges
+                else thin
+            )
+
+            cell.border = Border(
+                left=left,
+                right=right,
+                top=(
+                    medium
+                    if total_row
+                    else thin
+                ),
+                bottom=(
+                    medium
+                    if total_row
+                    else thin
+                )
+            )
+
+            # ------------------------------------------------
+            # NUMBER FORMAT
+            #
+            # Every non-percentage number:
+            # 4,329
+            # 63,709
+            # 2,213
+            #
+            # Percentage:
+            # 51.1
+            # ------------------------------------------------
+
+            apply_number_format(
+                cell,
+                header,
+                value
+            )
+
+        ws.row_dimensions[
+            row_idx
+        ].height = 30
 
     # --------------------------------------------------------
     # Dynamic NAMA width
@@ -1546,12 +1544,14 @@ def apply_sheet_settings(ws):
     ws.column_dimensions[
         "B"
     ].width = min(
-        max(max_len + 4, 25),
+        max_len + 4,
         60
     )
 
     # --------------------------------------------------------
-    # Freeze
+    # Freeze pane
+    #
+    # There are repeated headers, so don't freeze at A2.
     # --------------------------------------------------------
 
     ws.freeze_panes = "A2"
@@ -1560,7 +1560,9 @@ def apply_sheet_settings(ws):
     # Page setup
     # --------------------------------------------------------
 
-    ws.page_setup.orientation = "landscape"
+    ws.page_setup.orientation = (
+        "landscape"
+    )
 
     ws.page_setup.paperSize = (
         ws.PAPERSIZE_A4
@@ -1580,267 +1582,6 @@ def apply_sheet_settings(ws):
 
 
 # ============================================================
-# WRITE STANDARD SUMMARY SHEET
-#
-# Used for PARLIMEN only.
-# ============================================================
-
-def write_summary_sheet(
-    ws,
-    summary_df,
-    headers
-):
-
-    write_main_header(
-        ws,
-        headers,
-        row_number=1
-    )
-
-    for row_idx, row in enumerate(
-        summary_df.itertuples(
-            index=False,
-            name=None
-        ),
-        start=2
-    ):
-
-        write_data_row(
-            ws,
-            row_idx,
-            row,
-            headers,
-            bold=(
-                row_idx == len(summary_df) + 1
-            )
-        )
-
-    # --------------------------------------------------------
-    # Colour final total row
-    # --------------------------------------------------------
-
-    if not summary_df.empty:
-
-        total_row_number = (
-            len(summary_df) + 1
-        )
-
-        total_dict = (
-            summary_df
-            .iloc[-1]
-            .to_dict()
-        )
-
-        write_dun_total_row(
-            ws,
-            total_row_number,
-            total_dict,
-            headers
-        )
-
-    apply_column_widths(ws)
-    apply_sheet_settings(ws)
-
-
-# ============================================================
-# WRITE COMBINED DM + DUN WORKSHEET
-#
-# Structure:
-#
-# HEADER
-# DUN GROUP HEADER
-# DM
-# DM
-# DM
-# DUN TOTAL
-# BLANK
-# DUN GROUP HEADER
-# DM
-# DM
-# DUN TOTAL
-# ============================================================
-
-def write_combined_dm_sheet(
-    ws,
-    final_df,
-    age_groups,
-    headers
-):
-
-    # ========================================================
-    # MAIN HEADER
-    # ========================================================
-
-    write_main_header(
-        ws,
-        headers,
-        row_number=1
-    )
-
-    current_row = 2
-
-    # ========================================================
-    # PREPARE DM SUMMARY
-    # ========================================================
-
-    dm_df = build_summary_df(
-        final_df,
-        [
-            "_KOD DM",
-            "_NAMA DM"
-        ],
-        age_groups,
-        headers,
-        kod_formatter=format_kod_dm
-    )
-
-    # ========================================================
-    # ADD DUN SORTING KEY TO DM SUMMARY
-    # ========================================================
-
-    dm_df["_DUN_CODE"] = (
-        dm_df["KOD"]
-        .apply(get_dun_code_from_dm)
-    )
-
-    dm_df["_DUN_SORT"] = (
-        dm_df["_DUN_CODE"]
-        .apply(numeric_sort_key)
-    )
-
-    dm_df["_DM_SORT"] = (
-        dm_df["KOD"]
-        .apply(numeric_sort_key)
-    )
-
-    dm_df = (
-        dm_df
-        .sort_values(
-            [
-                "_DUN_SORT",
-                "_DM_SORT"
-            ],
-            kind="stable"
-        )
-        .reset_index(drop=True)
-    )
-
-    # ========================================================
-    # GROUP DM ROWS BY DUN
-    # ========================================================
-
-    for dun_code, dun_dm_df in dm_df.groupby(
-        "_DUN_CODE",
-        sort=False
-    ):
-
-        if not dun_code:
-            continue
-
-        # ----------------------------------------------------
-        # Get DUN name from underlying records
-        # ----------------------------------------------------
-
-        dun_records = final_df[
-            final_df["_KOD DUN"].apply(
-                lambda x: format_kod_dun(x)
-            ) == dun_code
-        ]
-
-        if dun_records.empty:
-            continue
-
-        dun_name_values = (
-            dun_records["_NAMA DUN"]
-            .dropna()
-            .astype(str)
-            .str.strip()
-        )
-
-        if dun_name_values.empty:
-            dun_name = ""
-        else:
-            dun_name = (
-                dun_name_values
-                .iloc[0]
-                .upper()
-            )
-
-        # ----------------------------------------------------
-        # DUN GROUP HEADER
-        # ----------------------------------------------------
-
-        write_dun_group_header(
-            ws,
-            current_row,
-            dun_code,
-            dun_name,
-            headers
-        )
-
-        current_row += 1
-
-        # ----------------------------------------------------
-        # DM ROWS
-        # ----------------------------------------------------
-
-        for _, dm_row in dun_dm_df.iterrows():
-
-            values = [
-                dm_row[header]
-                for header in headers
-            ]
-
-            write_data_row(
-                ws,
-                current_row,
-                values,
-                headers,
-                bold=False
-            )
-
-            current_row += 1
-
-        # ----------------------------------------------------
-        # DUN TOTAL
-        #
-        # IMPORTANT:
-        # Calculated from underlying records belonging
-        # to this DUN, NOT by summing/averaging percentages
-        # from the DM summary rows.
-        # ----------------------------------------------------
-
-        dun_total = build_dun_total_row(
-            dun_code,
-            dun_name,
-            dun_records,
-            age_groups
-        )
-
-        write_dun_total_row(
-            ws,
-            current_row,
-            dun_total,
-            headers
-        )
-
-        current_row += 1
-
-        # ----------------------------------------------------
-        # BLANK ROW BETWEEN DUN GROUPS
-        # ----------------------------------------------------
-
-        current_row += 1
-
-    # ========================================================
-    # COLUMN WIDTHS / SETTINGS
-    # ========================================================
-
-    apply_column_widths(ws)
-    apply_sheet_settings(ws)
-
-
-# ============================================================
 # PREPARE INPUT DATA
 # ============================================================
 
@@ -1856,9 +1597,9 @@ def prepare_dataframe(
         for c in df.columns
     ]
 
-    # ========================================================
-    # PARLIAMENT
-    # ========================================================
+    # --------------------------------------------------------
+    # Parliament
+    # --------------------------------------------------------
 
     col_kod_parlimen = get_col(
         df,
@@ -1878,9 +1619,9 @@ def prepare_dataframe(
         ]
     )
 
-    # ========================================================
+    # --------------------------------------------------------
     # DUN
-    # ========================================================
+    # --------------------------------------------------------
 
     col_kod_dun = get_col(
         df,
@@ -1900,9 +1641,9 @@ def prepare_dataframe(
         ]
     )
 
-    # ========================================================
+    # --------------------------------------------------------
     # DM
-    # ========================================================
+    # --------------------------------------------------------
 
     col_dm = get_col(
         df,
@@ -1921,9 +1662,9 @@ def prepare_dataframe(
         ]
     )
 
-    # ========================================================
-    # OTHER COLUMNS
-    # ========================================================
+    # --------------------------------------------------------
+    # Other columns
+    # --------------------------------------------------------
 
     col_jantina = get_col(
         df,
@@ -1984,17 +1725,39 @@ def prepare_dataframe(
     )
 
     required = {
-        "kod_parlimen": col_kod_parlimen,
-        "nama_parlimen": col_nama_parlimen,
-        "kod_dun": col_kod_dun,
-        "nama_dun / DUN": col_nama_dun,
-        "KOD DM": col_dm,
-        "NamaDM": col_nama_dm,
-        "JANTINA": col_jantina,
-        "BANGSA": col_bangsa,
-        "UMUR": col_umur,
-        "NoPerkhidmatan": col_no,
-        "NoKPPasangan": col_pasangan
+
+        "kod_parlimen":
+            col_kod_parlimen,
+
+        "nama_parlimen":
+            col_nama_parlimen,
+
+        "kod_dun":
+            col_kod_dun,
+
+        "nama_dun / DUN":
+            col_nama_dun,
+
+        "KOD DM":
+            col_dm,
+
+        "NamaDM":
+            col_nama_dm,
+
+        "JANTINA":
+            col_jantina,
+
+        "BANGSA":
+            col_bangsa,
+
+        "UMUR":
+            col_umur,
+
+        "NoPerkhidmatan":
+            col_no,
+
+        "NoKPPasangan":
+            col_pasangan
     }
 
     missing = [
@@ -2010,9 +1773,9 @@ def prepare_dataframe(
             + ", ".join(missing)
         )
 
-    # ========================================================
-    # HIERARCHY
-    # ========================================================
+    # --------------------------------------------------------
+    # Hierarchy
+    # --------------------------------------------------------
 
     df["_KOD PARLIMEN"] = (
         df[col_kod_parlimen]
@@ -2058,9 +1821,9 @@ def prepare_dataframe(
         .str.strip()
     )
 
-    # ========================================================
-    # DEMOGRAPHIC FIELDS
-    # ========================================================
+    # --------------------------------------------------------
+    # Demographics
+    # --------------------------------------------------------
 
     df["_jantina"] = (
         df[col_jantina]
@@ -2086,9 +1849,9 @@ def prepare_dataframe(
         )
     )
 
-    # ========================================================
-    # PARTY
-    # ========================================================
+    # --------------------------------------------------------
+    # Party
+    # --------------------------------------------------------
 
     if col_party:
 
@@ -2104,9 +1867,9 @@ def prepare_dataframe(
 
         df["_party"] = ""
 
-    # ========================================================
-    # SIKAP
-    # ========================================================
+    # --------------------------------------------------------
+    # Sikap
+    # --------------------------------------------------------
 
     if col_sikap:
 
@@ -2119,9 +1882,9 @@ def prepare_dataframe(
 
         df["_sikap"] = ""
 
-    # ========================================================
-    # SERVICE NUMBERS
-    # ========================================================
+    # --------------------------------------------------------
+    # Service numbers
+    # --------------------------------------------------------
 
     df["_NoPerkhidmatan_clean"] = (
         df[col_no]
@@ -2133,9 +1896,9 @@ def prepare_dataframe(
         .apply(clean_service_no)
     )
 
-    # ========================================================
-    # CLASSIFICATION
-    # ========================================================
+    # --------------------------------------------------------
+    # Classification
+    # --------------------------------------------------------
 
     df["_awal_type"] = (
         df["_NoPerkhidmatan_clean"]
@@ -2234,7 +1997,9 @@ def generate_demografik(
 
     default_ws = wb.active
 
-    wb.remove(default_ws)
+    wb.remove(
+        default_ws
+    )
 
     # ========================================================
     # 1. PARLIMEN
@@ -2255,40 +2020,56 @@ def generate_demografik(
         kod_formatter=format_kod_parlimen
     )
 
-    parlimen_df = add_total_row(
-        parlimen_df,
-        headers
+    # Add single header for PARLIMEN
+    parlimen_with_header = pd.concat(
+        [
+            pd.DataFrame(
+                [
+                    {
+                        header: header
+                        for header in headers
+                    }
+                ]
+            ),
+            parlimen_df
+        ],
+        ignore_index=True
     )
 
     write_summary_sheet(
         ws_parlimen,
-        parlimen_df,
+        parlimen_with_header,
         headers
     )
 
     logs.append(
         f"PARLIMEN worksheet: "
-        f"{len(parlimen_df) - 1:,} Parliament(s)"
+        f"{len(parlimen_df):,} Parliament(s)"
     )
 
     # ========================================================
-    # 2. COMBINED DM WORKSHEET
+    # 2. DM
     #
-    # NO DUN WORKSHEET
+    # ALL DM + DUN TOTALS IN ONE WORKSHEET
     # ========================================================
 
     ws_dm = wb.create_sheet(
         title="DM"
     )
 
-    write_combined_dm_sheet(
-        ws_dm,
+    dm_grouped_df = build_dm_grouped_table(
         final_df,
         age_groups,
         headers
     )
 
-    # Count DUNs and DMs
+    write_summary_sheet(
+        ws_dm,
+        dm_grouped_df,
+        headers
+    )
+
+    # Count actual DUNs
     dun_count = (
         final_df[
             [
@@ -2313,24 +2094,12 @@ def generate_demografik(
 
     logs.append(
         f"DM worksheet: "
-        f"{dm_count:,} DM(s) grouped under "
+        f"{dm_count:,} DM(s)"
+    )
+
+    logs.append(
+        f"DUN subtotal groups: "
         f"{dun_count:,} DUN(s)"
-    )
-
-    logs.append(
-        "DUN totals calculated directly "
-        "from underlying records; percentages "
-        "were recalculated from DUN counts."
-    )
-
-    logs.append(
-        "Non-percentage statistical columns "
-        "formatted with thousand separators."
-    )
-
-    logs.append(
-        "DM data rows have no fill colour; "
-        "only headers and total rows are coloured."
     )
 
     # ========================================================
