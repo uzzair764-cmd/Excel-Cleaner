@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 from processors.dm_stats_processor import generate_demografik
 
@@ -122,4 +121,3 @@ if uploaded_files:
             st.error(str(e))
 else:
     st.info("Upload one or more Excel files to start.")
-```
