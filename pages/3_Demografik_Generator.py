@@ -2,6 +2,8 @@ import io
 import openpyxl
 import streamlit as st
 import processors.dm_stats_processor as dm_stats
+from openpyxl.styles import Font, Border, Side, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 st.set_page_config(
     page_title="DM Stats",
@@ -34,24 +36,169 @@ else:
     st.error("Invalid age group configuration. Example: 18-21, 22-30, 31-40, 41-50, 51-60, 61+")
 
 
+# ============================================================
+# SECONDARY DUN TABLE DESIGN
+# ============================================================
+# Keep the processor's calculation logic, but override the worksheet
+# writer so the secondary table starts at column B and uses a thick
+# outside border. Only the race header rows are highlighted; gender
+# rows remain unhighlighted.
+# ============================================================
+
+def _write_dun_age_table_formatted(ws, start_row, kod_dun, nama_dun, dun_df, age_groups):
+    thin = Side(style='thin', color='000000')
+    medium = Side(style='medium', color='000000')
+
+    GREEN = 'A9D18E'
+    ORANGE = 'F4B183'
+    WHITE = 'FFFFFF'
+
+    start_col = 2  # Column B
+    end_col = start_col + (len(age_groups) * 2)
+
+    # --------------------------------------------------------
+    # DUN TITLE — MERGED B:LAST COLUMN
+    # --------------------------------------------------------
+    title = ws.cell(
+        start_row,
+        start_col,
+        f"N.{dm_stats.kod_dun_digits(kod_dun)[-2:].zfill(2)} "
+        f"{str(nama_dun).upper()} - UMUR MENGIKUT KAUM DAN JANTINA"
+    )
+
+    ws.merge_cells(
+        start_row=start_row,
+        start_column=start_col,
+        end_row=start_row,
+        end_column=end_col
+    )
+
+    title.font = Font(name='Calibri', size=14, bold=True)
+    title.alignment = Alignment(horizontal='center', vertical='center')
+    title.fill = PatternFill(fill_type=None)
+    ws.row_dimensions[start_row].height = 24
+
+    # Thick outside border around the entire merged title row.
+    for c in range(start_col, end_col + 1):
+        cell = ws.cell(start_row, c)
+        cell.border = Border(
+            left=medium if c == start_col else thin,
+            right=medium if c == end_col else thin,
+            top=medium,
+            bottom=medium
+        )
+
+    current = start_row + 1
+    table_first_row = current
+
+    for row_type, data in dm_stats.build_age_race_gender_rows(dun_df, age_groups):
+        values = [data['LABEL']]
+        for age in age_groups:
+            values.extend([data[age], data[f'{age} (%)']])
+
+        for offset, value in enumerate(values):
+            c = start_col + offset
+            cell = ws.cell(current, c, value)
+
+            cell.font = Font(
+                name='Calibri',
+                size=11,
+                bold=(row_type == 'header')
+            )
+            cell.alignment = Alignment(
+                horizontal='left' if offset == 0 else 'center',
+                vertical='center',
+                wrap_text=True
+            )
+
+            # Highlight ONLY the race/header rows.
+            if row_type == 'header':
+                cell.fill = PatternFill(
+                    fill_type='solid',
+                    fgColor=GREEN if offset == 0 else ORANGE
+                )
+            else:
+                cell.fill = PatternFill(
+                    fill_type='solid',
+                    fgColor=WHITE
+                )
+
+            cell.border = Border(
+                left=medium if c == start_col else thin,
+                right=medium if c == end_col else thin,
+                top=thin,
+                bottom=thin
+            )
+
+            if row_type == 'gender' and offset > 0 and isinstance(value, (int, float)):
+                # Count columns: thousand separator.
+                # Percentage columns: one decimal + literal % symbol.
+                if offset % 2 == 1:
+                    cell.number_format = '#,##0'
+                else:
+                    cell.number_format = '0.0"%"'
+
+        current += 1
+
+    table_last_row = current - 1
+
+    # --------------------------------------------------------
+    # THICK OUTSIDE BORDER AROUND THE WHOLE TABLE
+    # --------------------------------------------------------
+    for r in range(table_first_row, table_last_row + 1):
+        for c in range(start_col, end_col + 1):
+            cell = ws.cell(r, c)
+            cell.border = Border(
+                left=medium if c == start_col else thin,
+                right=medium if c == end_col else thin,
+                top=medium if r == table_first_row else thin,
+                bottom=medium if r == table_last_row else thin
+            )
+
+    # Column widths for B onward.
+    ws.column_dimensions['B'].width = max(
+        ws.column_dimensions['B'].width or 0,
+        18
+    )
+
+    for i in range(len(age_groups)):
+        count_col = get_column_letter(start_col + 1 + i * 2)
+        pct_col = get_column_letter(start_col + 2 + i * 2)
+
+        ws.column_dimensions[count_col].width = max(
+            ws.column_dimensions[count_col].width or 0,
+            11
+        )
+        ws.column_dimensions[pct_col].width = max(
+            ws.column_dimensions[pct_col].width or 0,
+            13.7
+        )
+
+    return current + 1
+
+
+# The processor calls this function while generating each DUN table.
+dm_stats.write_dun_age_table = _write_dun_age_table_formatted
+
+
 def apply_number_formatting(excel_bytes):
     """
-    Apply consistent number formatting to every table in the generated workbook.
+    Final Excel number formatting pass.
 
-    Count columns:
+    Count values:
         #,##0
 
-    Percentage columns:
+    Percentage values:
         0.0"%"
 
-    The percentage values generated by dm_stats_processor are already stored
-    as values such as 18.5, so 0.0"%" is used instead of Excel's 0.0% format.
+    The processor stores percentage values as 18.5 rather than 0.185,
+    therefore a literal percent sign is used instead of Excel's 0.0% format.
     """
     input_buffer = io.BytesIO(excel_bytes)
     wb = openpyxl.load_workbook(input_buffer)
 
     for ws in wb.worksheets:
-        # Main table: identify percentage columns from the header row.
+        # Main table.
         if ws.max_row >= 1:
             header_map = {
                 col: ws.cell(1, col).value
@@ -69,30 +216,34 @@ def apply_number_formatting(excel_bytes):
                     if isinstance(cell.value, (int, float)):
                         cell.number_format = '0.0"%"' if is_percentage else '#,##0'
 
-        # Secondary DUN age/race/gender tables.
-        # Their first row is a merged title, followed by race headers and
-        # gender rows. Percentage columns are every second column after A.
+        # Secondary DUN tables now begin in column B.
         for row in range(1, ws.max_row + 1):
-            first_value = ws.cell(row, 1).value
-            if not isinstance(first_value, str):
-                continue
+            title_found = False
+            title_end_col = None
 
-            if 'UMUR MENGIKUT KAUM DAN JANTINA' not in first_value.upper():
-                continue
-
-            # Locate the table boundary from the merged title range.
-            end_col = 1
             for merged_range in ws.merged_cells.ranges:
-                if merged_range.min_row == row and merged_range.max_row == row:
-                    end_col = merged_range.max_col
+                if (
+                    merged_range.min_row == row
+                    and merged_range.max_row == row
+                    and merged_range.min_col == 2
+                    and isinstance(ws.cell(row, 2).value, str)
+                    and 'UMUR MENGIKUT KAUM DAN JANTINA' in ws.cell(row, 2).value.upper()
+                ):
+                    title_found = True
+                    title_end_col = merged_range.max_col
                     break
 
+            if not title_found:
+                continue
+
+            start_col = 2
+            end_col = title_end_col
             table_start = row + 1
             table_end = ws.max_row
 
-            # Stop at the next table title or blank separator after this table.
+            # Find the next DUN title.
             for next_row in range(table_start, ws.max_row + 1):
-                value = ws.cell(next_row, 1).value
+                value = ws.cell(next_row, 2).value
                 if (
                     next_row > table_start
                     and isinstance(value, str)
@@ -101,15 +252,35 @@ def apply_number_formatting(excel_bytes):
                     table_end = next_row - 2
                     break
 
+            # Apply number formats and reinforce the thick outside border.
             for r in range(table_start, table_end + 1):
-                # Column A contains race/gender labels.
-                for c in range(2, end_col + 1):
+                for c in range(start_col, end_col + 1):
                     cell = ws.cell(r, c)
-                    if not isinstance(cell.value, (int, float)):
-                        continue
 
-                    # B, D, F... are counts; C, E, G... are percentages.
-                    cell.number_format = '0.0"%"' if c % 2 == 1 else '#,##0'
+                    if isinstance(cell.value, (int, float)):
+                        # B is the label column. C/E/G/... are counts;
+                        # D/F/H/... are percentages.
+                        if c > start_col:
+                            offset = c - start_col
+                            cell.number_format = (
+                                '0.0"%"' if offset % 2 == 0 else '#,##0'
+                            )
+
+                    cell.border = Border(
+                        left=Side(style='medium', color='000000') if c == start_col else Side(style='thin', color='000000'),
+                        right=Side(style='medium', color='000000') if c == end_col else Side(style='thin', color='000000'),
+                        top=Side(style='medium', color='000000') if r == table_start else Side(style='thin', color='000000'),
+                        bottom=Side(style='medium', color='000000') if r == table_end else Side(style='thin', color='000000')
+                    )
+
+            # Thick outside border around the merged DUN title row.
+            for c in range(start_col, end_col + 1):
+                ws.cell(row, c).border = Border(
+                    left=Side(style='medium', color='000000') if c == start_col else Side(style='thin', color='000000'),
+                    right=Side(style='medium', color='000000') if c == end_col else Side(style='thin', color='000000'),
+                    top=Side(style='medium', color='000000'),
+                    bottom=Side(style='medium', color='000000')
+                )
 
     output_buffer = io.BytesIO()
     wb.save(output_buffer)
@@ -125,8 +296,6 @@ if uploaded_files and age_groups:
                 age_groups=age_groups
             )
 
-            # Apply final Excel display formatting to both the main table
-            # and all DUN age-group/kaum/jantina tables.
             excel_bytes = apply_number_formatting(excel_bytes)
 
             st.success(f"Generated: {out_name}")
