@@ -18,7 +18,7 @@ COLUMN_MAP = {
     "nama": "name",
     "phone 1": "number",
     "bangsa": "kaum_spr",
-    "kaum": "kaum_spr",          # <-- added: maps new "kaum" header to kaum_spr
+    "kaum": "kaum_spr",
     "kod lokaliti": "kod_lokaliti",
     "lokaliti": "nama_lokaliti",
     "kod dm": "kod_dm",
@@ -34,8 +34,8 @@ COLUMN_MAP = {
 def parse_start_id(start_id):
     match = re.match(r"^(.*?)(\d+)$", str(start_id).strip())
     if not match:
-        raise ValueError("ID must end with number. Example: CJ1000")
-    return match.group(1), int(match.group(2)) + 1
+        raise ValueError("ID must end with number. Example: CC1")
+    return match.group(1), int(match.group(2))
 
 
 def read_file(uploaded_file):
@@ -231,9 +231,6 @@ def run_cleaner(
 
             cleaned_df, stats = clean_numbers(df)
 
-            # DEMOGRAFIK logic:
-            # - demographic columns use pre-cleaning df
-            # - NO TEL columns use post-cleaning cleaned_df
             demografik_bytes = write_demografik_xlsx_bytes(
                 raw_df=df,
                 cleaned_df=cleaned_df,
@@ -272,6 +269,7 @@ def run_cleaner(
 
             stats["file"] = file.name
             stats["csv_chunks"] = len(csv_chunks)
+            stats["first_id_generated"] = output_df["id"].iloc[0] if not output_df.empty else ""
             stats["last_id_generated"] = last_generated_id or ""
             summary.append(stats)
 
@@ -280,6 +278,11 @@ def run_cleaner(
     summary_df = pd.DataFrame(summary)
 
     if not summary_df.empty:
+        summary_df.attrs["first_generated_id"] = (
+            summary_df["first_id_generated"].iloc[0]
+            if "first_id_generated" in summary_df.columns
+            else ""
+        )
         summary_df.attrs["last_generated_id"] = overall_last_generated_id or ""
 
     return zip_buffer.getvalue(), summary_df
