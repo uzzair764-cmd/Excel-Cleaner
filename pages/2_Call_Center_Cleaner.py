@@ -47,8 +47,8 @@ uploaded_files = st.file_uploader(
 
 start_id = st.text_input(
     "Starting ID",
-    value="CJ1000",
-    help="Example: CJ1000 will start output from CJ1001"
+    value="CC1",
+    help="The entered ID will be the first ID generated. Example: CC1 will start output from CC1."
 )
 
 CHUNK_SIZE = 50000
@@ -107,7 +107,11 @@ if uploaded_files:
                 use_container_width=True
             )
 
+            first_id = summary_df.attrs.get("first_generated_id", "")
             last_id = summary_df.attrs.get("last_generated_id", "")
+
+            if first_id:
+                st.success(f"First ID generated: {first_id}")
 
             if last_id:
                 st.success(f"Last ID generated: {last_id}")
