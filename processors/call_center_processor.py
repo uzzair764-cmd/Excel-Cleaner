@@ -14,6 +14,8 @@ FINAL_COLUMNS = [
     "kod_negeri", "nama_negeri", "sikap", "party"
 ]
 
+LEFT_ALIGN_COLUMNS = {"name", "nama_lokaliti", "nama_dm"}
+
 COLUMN_MAP = {
     "nama": "name",
     "phone 1": "number",
@@ -162,21 +164,37 @@ def write_xlsx_bytes(df):
             "valign": "vcenter"
         })
 
-        cell_fmt = workbook.add_format({
+        center_fmt = workbook.add_format({
             "border": 0,
             "align": "center",
             "valign": "vcenter"
         })
 
+        left_fmt = workbook.add_format({
+            "border": 0,
+            "align": "left",
+            "valign": "vcenter"
+        })
+
+        # Header row is always centered.
         for col_idx, col_name in enumerate(df.columns):
             worksheet.write(0, col_idx, col_name, header_fmt)
 
-        worksheet.set_column(
-            0,
-            len(df.columns) - 1,
-            18,
-            cell_fmt
-        )
+        # Autofit all columns except nama_lokaliti.
+        # nama_lokaliti keeps a fixed width of 18.
+        for col_idx, col_name in enumerate(df.columns):
+            if col_name == "nama_lokaliti":
+                worksheet.set_column(col_idx, col_idx, 18, left_fmt)
+                continue
+
+            max_length = len(str(col_name))
+            if not df.empty:
+                max_data_length = df[col_name].astype(str).map(len).max()
+                max_length = max(max_length, int(max_data_length))
+
+            width = min(max_length + 2, 60)
+            cell_format = left_fmt if col_name in LEFT_ALIGN_COLUMNS else center_fmt
+            worksheet.set_column(col_idx, col_idx, width, cell_format)
 
     output.seek(0)
     return output.getvalue()
