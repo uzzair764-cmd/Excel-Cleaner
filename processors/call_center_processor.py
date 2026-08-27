@@ -217,8 +217,10 @@ def run_cleaner(
 
     zip_buffer = io.BytesIO()
     summary = []
+    output_files = []
 
     overall_last_generated_id = None
+    overall_first_generated_id = None
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
         for file in uploaded_files:
@@ -243,18 +245,32 @@ def run_cleaner(
                 current_num
             )
 
+            first_generated_id = (
+                output_df["id"].iloc[0]
+                if not output_df.empty
+                else ""
+            )
+
+            if first_generated_id and not overall_first_generated_id:
+                overall_first_generated_id = first_generated_id
+
             if last_generated_id:
                 overall_last_generated_id = last_generated_id
 
-            zipf.writestr(
-                f"{base_name}/{base_name}.xlsx",
-                write_xlsx_bytes(output_df)
-            )
+            xlsx_path = f"{base_name}/{base_name}.xlsx"
+            demografik_path = f"{base_name}/DEMOGRAFIK {base_name}.xlsx"
 
             zipf.writestr(
-                f"{base_name}/DEMOGRAFIK {base_name}.xlsx",
+                xlsx_path,
+                write_xlsx_bytes(output_df)
+            )
+            output_files.append(xlsx_path)
+
+            zipf.writestr(
+                demografik_path,
                 demografik_bytes
             )
+            output_files.append(demografik_path)
 
             csv_chunks = write_csv_chunks(
                 output_df,
@@ -262,14 +278,13 @@ def run_cleaner(
             )
 
             for chunk_no, csv_bytes in csv_chunks:
-                zipf.writestr(
-                    f"{base_name}/CSV/{base_name} {chunk_no}.csv",
-                    csv_bytes
-                )
+                csv_path = f"{base_name}/CSV/{base_name} {chunk_no}.csv"
+                zipf.writestr(csv_path, csv_bytes)
+                output_files.append(csv_path)
 
             stats["file"] = file.name
             stats["csv_chunks"] = len(csv_chunks)
-            stats["first_id_generated"] = output_df["id"].iloc[0] if not output_df.empty else ""
+            stats["first_id_generated"] = first_generated_id
             stats["last_id_generated"] = last_generated_id or ""
             summary.append(stats)
 
@@ -278,11 +293,8 @@ def run_cleaner(
     summary_df = pd.DataFrame(summary)
 
     if not summary_df.empty:
-        summary_df.attrs["first_generated_id"] = (
-            summary_df["first_id_generated"].iloc[0]
-            if "first_id_generated" in summary_df.columns
-            else ""
-        )
+        summary_df.attrs["first_generated_id"] = overall_first_generated_id or ""
         summary_df.attrs["last_generated_id"] = overall_last_generated_id or ""
+        summary_df.attrs["output_files"] = output_files
 
     return zip_buffer.getvalue(), summary_df
