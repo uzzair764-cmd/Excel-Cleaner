@@ -116,6 +116,17 @@ if uploaded_files:
             if last_id:
                 st.success(f"Last ID generated: {last_id}")
 
+            output_files = summary_df.attrs.get("output_files", [])
+
+            st.subheader("Output Files")
+
+            if output_files:
+                st.write(f"Total output files: **{len(output_files)}**")
+                for output_file in output_files:
+                    st.code(output_file, language=None)
+            else:
+                st.info("No output files were generated.")
+
             zip_name = (
                 uploaded_files[0].name.rsplit(".", 1)[0] + ".zip"
                 if len(uploaded_files) == 1
