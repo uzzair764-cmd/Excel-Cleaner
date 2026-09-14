@@ -334,6 +334,20 @@ def get_code(kategori_kaum, gender):
         return "LLL" if g == "L" else "LLP"
 
 
+def get_parlimen_age_code(kategori_kaum, gender, age):
+    """Return the standard ethnicity/gender code with its WA age-range suffix."""
+    base_code = get_code(kategori_kaum, gender)
+    age_label = assign_age_range(age, AGE_RANGES)
+    age_suffix = {
+        "18-25": "1",
+        "26-40": "2",
+        "41-60": "3",
+        "61+": "4",
+    }.get(age_label)
+
+    return f"{base_code}{age_suffix}" if age_suffix else base_code
+
+
 def format_code_7digit(raw_code):
     raw = str(raw_code).strip()
 
@@ -681,6 +695,12 @@ def get_required_columns(config):
     if age_filter is not None:
         req.add("umur")
 
+    if (
+        config.get("parlimen_age_code", False)
+        and str(config.get("input_level", "")).strip().upper() == "PARLIMEN"
+    ):
+        req.add("umur")
+
     return sorted(req)
 
 
@@ -871,6 +891,13 @@ def run_export(file_paths, config, progress_callback=None):
     # When False (default), First Name = old .PARLIMEN.DUN.DM format (from kod_dm).
     use_lokaliti_first_name = config.get("use_lokaliti_first_name", False)
 
+    # This structure is intentionally limited to PARLIMEN exports.  A config
+    # value on a DUN export must not alter its existing output.
+    parlimen_age_code = (
+        config.get("parlimen_age_code", False)
+        and str(input_level).strip().upper() == "PARLIMEN"
+    )
+
     if custom_age_ranges:
         ACTIVE_AGE_RANGES = custom_age_ranges
     else:
@@ -1032,7 +1059,17 @@ def run_export(file_paths, config, progress_callback=None):
 
     df = df[df["First Name"].astype(str).str.strip() != ""].copy()
 
-    df["Last Name"] = df["code"]
+    if parlimen_age_code:
+        df["Last Name"] = df.apply(
+            lambda row: get_parlimen_age_code(
+                row.get("kategori_kaum", ""),
+                row.get("jantina", ""),
+                row.get("umur", ""),
+            ),
+            axis=1,
+        )
+    else:
+        df["Last Name"] = df["code"]
 
     if df.empty:
         raise ValueError("No rows left after WhatsApp formatting.")

@@ -141,6 +141,7 @@ def get_structure_options(input_level):
         "PARLIMEN > DUN > DM > ML/MP/...": "PARLIMEN_DUN_DM_CODE",
         "PARLIMEN > DUN > DM > LOKALITI": "PARLIMEN_DUN_DM_LOKALITI",
         "PARLIMEN > PARLIMEN.xlsx": "PARLIMEN_FILE",
+        "PARLIMEN – Age Code (ML1–LLP4)": "PARLIMEN_AGE_CODE",
         "COMBINE ALL INPUT FILES > ONE XLSX": "COMBINE_ALL",
     }
 
@@ -224,6 +225,10 @@ def map_structure_to_config(structure_code):
         last_group_as_folder = False
 
     elif structure_code == "PARLIMEN_FILE":
+        group_levels = ["PARLIMEN"]
+        last_group_as_folder = True
+
+    elif structure_code == "PARLIMEN_AGE_CODE":
         group_levels = ["PARLIMEN"]
         last_group_as_folder = True
 
@@ -465,6 +470,12 @@ def build_folder_preview(input_level, structure_code, age_ranges):
             └── LOK003 NAMA_LOKALITI.xlsx"""
 
         if structure_code == "PARLIMEN_FILE":
+            return """voter_outputs/
+├── P001 PARLIMEN_NAME.xlsx
+├── P002 PARLIMEN_NAME.xlsx
+└── P003 PARLIMEN_NAME.xlsx"""
+
+        if structure_code == "PARLIMEN_AGE_CODE":
             return """voter_outputs/
 ├── P001 PARLIMEN_NAME.xlsx
 ├── P002 PARLIMEN_NAME.xlsx
@@ -770,6 +781,7 @@ if run_button:
             "create_empty_files": False,
             "one_way_blast": one_way_blast,
             "use_lokaliti_first_name": use_lokaliti_first_name,
+            "parlimen_age_code": structure_code == "PARLIMEN_AGE_CODE",
         }
 
         progress_bar = st.progress(0)
