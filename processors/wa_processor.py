@@ -697,7 +697,7 @@ def get_required_columns(config):
 
     if (
         config.get("parlimen_age_code", False)
-        and str(config.get("input_level", "")).strip().upper() == "PARLIMEN"
+        and str(config.get("input_level", "")).strip().upper() in ("PARLIMEN", "DUN")
     ):
         req.add("umur")
 
@@ -891,11 +891,10 @@ def run_export(file_paths, config, progress_callback=None):
     # When False (default), First Name = old .PARLIMEN.DUN.DM format (from kod_dm).
     use_lokaliti_first_name = config.get("use_lokaliti_first_name", False)
 
-    # This structure is intentionally limited to PARLIMEN exports.  A config
-    # value on a DUN export must not alter its existing output.
+    # Age-code structures are available for PARLIMEN and DUN input exports.
     parlimen_age_code = (
         config.get("parlimen_age_code", False)
-        and str(input_level).strip().upper() == "PARLIMEN"
+        and str(input_level).strip().upper() in ("PARLIMEN", "DUN")
     )
 
     if custom_age_ranges:
