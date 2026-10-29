@@ -406,6 +406,12 @@ def build_folder_preview(input_level, structure_code, age_ranges):
         ├── LOK002 NAMA_LOKALITI.xlsx
         └── LOK003 NAMA_LOKALITI.xlsx"""
 
+        if structure_code == "DUN_AGE_CODE":
+            return """voter_outputs/
+├── N.01 DUN_NAME.xlsx
+├── N.02 DUN_NAME.xlsx
+└── N.03 DUN_NAME.xlsx"""
+
     else:
         if structure_code == "PARLIMEN_DUN_DM_FILE":
             return """voter_outputs/
@@ -473,12 +479,6 @@ def build_folder_preview(input_level, structure_code, age_ranges):
             ├── LOK001 NAMA_LOKALITI.xlsx
             ├── LOK002 NAMA_LOKALITI.xlsx
             └── LOK003 NAMA_LOKALITI.xlsx"""
-
-        if structure_code == "DUN_AGE_CODE":
-            return """voter_outputs/
-├── DUN 001 DUN_NAME.xlsx
-├── DUN 002 DUN_NAME.xlsx
-└── DUN 003 DUN_NAME.xlsx"""
 
         if structure_code == "PARLIMEN_FILE":
             return """voter_outputs/
